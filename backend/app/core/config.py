@@ -1,12 +1,14 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "PRAHARI Backend"
-    APP_VERSION: str = "1.0.0"
+    APP_NAME: str
+    APP_VERSION: str
+    DATABASE_URL: str
 
-    DATABASE_URL: str = (
-        "postgresql://postgres:postgres@postgres:5432/prahari"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore"
     )
 
 
