@@ -40,6 +40,19 @@ class IncidentRepository:
         )
 
     @staticmethod
+    def update(db: Session, incident, data):
+
+        incident.fraud_type = data.fraud_type
+        incident.risk_level = data.risk_level
+        incident.status = data.status
+
+        db.commit()
+        db.refresh(incident)
+
+        return incident
+
+    @staticmethod
     def delete(db: Session, incident):
+
         db.delete(incident)
         db.commit()

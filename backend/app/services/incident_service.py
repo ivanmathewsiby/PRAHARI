@@ -16,5 +16,9 @@ class IncidentService:
         return IncidentRepository.get_by_id(db, incident_id)
 
     @staticmethod
+    def update_incident(db, incident, data):
+        return IncidentRepository.update(db, incident, data)
+
+    @staticmethod
     def delete_incident(db, incident):
         IncidentRepository.delete(db, incident)

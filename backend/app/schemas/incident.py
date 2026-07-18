@@ -1,5 +1,6 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 
 class IncidentCreate(BaseModel):
@@ -10,9 +11,9 @@ class IncidentCreate(BaseModel):
 
 
 class IncidentUpdate(BaseModel):
-    fraud_type: str | None = None
-    risk_level: str | None = None
-    status: str | None = None
+    fraud_type: Optional[str] = None
+    risk_level: Optional[str] = None
+    status: Optional[str] = None
 
 
 class IncidentResponse(BaseModel):
@@ -21,9 +22,10 @@ class IncidentResponse(BaseModel):
     phone_number: str
     transcript: str
     location: str
-    fraud_type: str | None = None
+    fraud_type: str
     risk_level: str
     status: str
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        from_attributes = True
