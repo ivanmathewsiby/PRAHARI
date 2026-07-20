@@ -20,6 +20,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../../components/ui/dialog";
+import FraudRingPanel from "../../components/FraudRingPanel";
 import {
   Shield,
   AlertOctagon,
@@ -455,6 +456,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Fraud Ring Intelligence Panel */}
+      <FraudRingPanel />
 
       {/* Incident Inspector dialog */}
       <Dialog open={selectedIncident !== null} onOpenChange={(open) => !open && setSelectedIncident(null)}>

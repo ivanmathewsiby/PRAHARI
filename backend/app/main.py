@@ -5,6 +5,7 @@ from app.api.health import router as health_router
 from app.api.incident import router as incident_router
 from app.api.audit import router as audit_router
 from app.api.dashboard import router as dashboard_router
+from app.api.rings import router as rings_router
 
 app = FastAPI(
     title="PRAHARI Backend",
@@ -26,6 +27,7 @@ app.include_router(health_router)
 app.include_router(incident_router)
 app.include_router(audit_router)
 app.include_router(dashboard_router)
+app.include_router(rings_router)
 
 
 @app.get("/")

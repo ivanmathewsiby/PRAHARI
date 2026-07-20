@@ -155,3 +155,95 @@ export async function getAnalytics(): Promise<Record<string, number>> {
   if (!res.ok) throw new Error("Failed to fetch analytics");
   return res.json();
 }
+
+// -------------------------------------------------------------
+// Fraud Ring Endpoints (Neo4j Graph)
+// -------------------------------------------------------------
+
+export interface RingSummary {
+  ring_id: string;
+  report_count: number;
+  city_count: number;
+  critical_count: number;
+  agencies: string[];
+}
+
+export interface RingNode {
+  id: string;
+  label: string;
+  type: string;
+  hub_rank?: number;
+}
+
+export interface RingEdge {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface RingGraph {
+  nodes: RingNode[];
+  edges: RingEdge[];
+}
+
+export interface HubIdentifier {
+  identifier: string;
+  type: string;
+  connection_count: number;
+  hub_rank?: number;
+}
+
+export interface RingDetail {
+  ring_id: string;
+  reports: any[];
+  top_hubs: HubIdentifier[];
+  graph: RingGraph;
+}
+
+export interface EvidencePackageReport {
+  report_id: string;
+  transcript_preview: string;
+  risk_label: string;
+  claimed_agency: string;
+  city: string;
+  created_at: string;
+  phones: string[];
+  upis: string[];
+  banks: string[];
+  agencies: string[];
+}
+
+export interface EvidencePackage {
+  ring_id: string;
+  stats: {
+    report_count: number;
+    city_count: number;
+    agencies: string[];
+  };
+  reports: EvidencePackageReport[];
+  top_hubs: HubIdentifier[];
+}
+
+export async function getRings(): Promise<RingSummary[]> {
+  const res = await fetch(`${API_BASE}/api/rings`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch rings");
+  return res.json();
+}
+
+export async function getRingDetail(ringId: string): Promise<RingDetail> {
+  const res = await fetch(`${API_BASE}/api/rings/${ringId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch ring ${ringId}`);
+  return res.json();
+}
+
+export async function getRingGraph(ringId: string): Promise<RingGraph> {
+  const res = await fetch(`${API_BASE}/api/rings/${ringId}/graph`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch graph for ring ${ringId}`);
+  return res.json();
+}
+
+export async function getEvidencePackage(ringId: string): Promise<EvidencePackage> {
+  const res = await fetch(`${API_BASE}/api/rings/${ringId}/evidence-package`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch evidence package for ring ${ringId}`);
+  return res.json();
+}
