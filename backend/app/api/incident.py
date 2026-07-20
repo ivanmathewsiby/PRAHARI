@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.schemas.incident import IncidentCreate
+from app.schemas.incident import IncidentCreate, IncidentUpdate
 from app.services.incident_service import IncidentService
 from app.core.database import SessionLocal
 
@@ -50,19 +50,15 @@ def get_incident(
 @router.put("/incidents/{incident_id}")
 def update_incident(
     incident_id: str,
-    data: IncidentCreate,
+    data: IncidentUpdate,
     db: Session = Depends(get_db)
 ):
-    incident = IncidentService.update_incident(
-        db,
-        incident_id,
-        data
-    )
+    incident = IncidentService.get_incident(db, incident_id)
 
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
 
-    return incident
+    return IncidentService.update_incident(db, incident, data)
 
 
 @router.delete("/incidents/{incident_id}")

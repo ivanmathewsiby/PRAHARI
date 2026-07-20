@@ -1,0 +1,125 @@
+{
+  "nav": {
+    "home": "Home",
+    "check": "Check Interaction",
+    "about": "About Scams",
+    "dashboard": "Operator Dashboard",
+    "github": "GitHub",
+    "logo": "PRAHARI"
+  },
+  "hero": {
+    "title": "PRAHARI",
+    "subtitle": "AI-Powered Digital Public Safety Intelligence",
+    "cta": "Check Suspicious Activity",
+    "tagline": "Protecting citizens from Digital Arrest and public safety scams.",
+    "features": {
+      "title": "Core Capabilities",
+      "scam": {
+        "title": "Scam Detection",
+        "desc": "Analyze chats, transcripts, or screenshots to expose Digital Arrest and coercion tactics."
+      },
+      "fraud": {
+        "title": "Fraud Intelligence",
+        "desc": "Identify fake agencies, impersonation, and fraudulent authority claims."
+      },
+      "shield": {
+        "title": "Family Shield",
+        "desc": "Instantly alert trusted family members when faced with coercive scenarios."
+      },
+      "xai": {
+        "title": "Explainable AI",
+        "desc": "Get clear, plain-English breakdowns detailing exactly why an interaction is suspicious."
+      }
+    }
+  },
+  "check": {
+    "title": "Check Suspicious Interaction",
+    "subtitle": "Analyze messages, transcripts, PDFs, or screenshots to assess fraud risk.",
+    "tabs": {
+      "text": "Paste Text",
+      "screenshot": "Upload Screenshot",
+      "pdf": "Upload PDF",
+      "transcript": "Upload Transcript"
+    },
+    "dropzone": {
+      "dragText": "Drag and drop your file here, or click to browse",
+      "support": "Supports PNG, JPG, PDF, or TXT up to 10MB",
+      "selected": "Selected file:"
+    },
+    "textarea": {
+      "placeholder": "Paste the text of the chat, message, or transcript here (e.g., 'This is the Cyber Crime Branch. Do not disconnect...')"
+    },
+    "analyze": "Analyze Interaction",
+    "analyzing": "Analyzing safety...",
+    "results": "Analysis Results"
+  },
+  "results": {
+    "riskLevel": "Risk Level",
+    "confidence": "Confidence Score",
+    "timeline": "Scam Progression Timeline",
+    "timelineDesc": "This visual timeline illustrates the detected phases of the scam. Click on any active phase to expand its explanation.",
+    "evidence": "Evidence Found",
+    "evidenceDesc": "Key sentences extracted from the interaction indicating potential fraud indicators.",
+    "recommendations": "Actionable Safety Steps",
+    "explainability": "Why am I seeing this?",
+    "complaint": "Complaint Draft",
+    "complaintDesc": "An automatically drafted complaint document prepared for submission to law enforcement.",
+    "helplineText": "Official Cyber Crime Helpline: Call 1930 immediately to report financial fraud."
+  },
+  "alert": {
+    "criticalTitle": "High Risk Scam Detected",
+    "criticalDesc": "This interaction matches known patterns of a Digital Arrest scam. Take immediate defensive action.",
+    "notifyFamily": "Notify Family",
+    "callHelpline": "Call Helpline (1930)",
+    "generateComplaint": "Generate Complaint",
+    "copyComplaint": "Copy Complaint",
+    "returnHome": "Return Home",
+    "copied": "Complaint copied to clipboard!",
+    "downloaded": "Complaint downloaded as PDF!",
+    "printed": "Document print dialog opened."
+  },
+  "familyModal": {
+    "title": "Family Shield Active",
+    "desc": "Quickly alert a trusted family member. They will receive a pre-formatted safety warning detailing this incident.",
+    "contact": "Trusted Contact",
+    "selectContact": "Select family member / friend",
+    "messagePreview": "Message Preview",
+    "notify": "Send Alert Notification",
+    "success": "Alert sent successfully! Your contact has been notified.",
+    "relations": {
+      "mother": "Mother",
+      "father": "Father",
+      "brother": "Brother",
+      "friend": "Friend"
+    }
+  },
+  "complaint": {
+    "toolbar": {
+      "copy": "Copy Text",
+      "download": "Download PDF",
+      "print": "Print Document"
+    }
+  },
+  "about": {
+    "title": "Understanding Digital Arrest Scams",
+    "subtitle": "Equip yourself with the knowledge to identify and defeat public safety scams.",
+    "scamIntro": "A 'Digital Arrest' scam is a highly sophisticated form of coercion where fraudsters impersonate law enforcement officers, cyber police, custom authorities, or CBI agents. They contact victims via video calls, claiming the victim's identity has been linked to illegal contraband, money laundering, or high-profile crime. They threaten immediate arrest unless the victim complies with a 'digital isolation' video call and transfers money for verification.",
+    "phases": {
+      "title": "The Five Phases of Digital Arrest",
+      "authority": "1. Authority Impersonation: Fraudsters wear uniforms or present fake IDs, posing as senior police or federal officers.",
+      "fear": "2. Fear & Coercion: The victim is threatened with severe legal action, public humiliation, or immediate jail time.",
+      "isolation": "3. Isolation: The victim is ordered not to close the video call, tell family, or contact any lawyer.",
+      "money": "4. Money Demand: The victim is instructed to transfer funds to a 'government safe verification account' immediately.",
+      "control": "5. Constant Control: Continuous video surveillance is maintained to ensure the victim has no window to seek help."
+    },
+    "facts": {
+      "title": "Crucial Facts to Remember",
+      "fact1": "Government agencies and law enforcement NEVER issue arrests via video calls.",
+      "fact2": "There is no legal provision for a 'Digital Arrest' or virtual custody in Indian law.",
+      "fact3": "Official agencies will never ask you to transfer funds to bank accounts for verification."
+    }
+  },
+  "footer": {
+    "text": "PRAHARI — Created for the AI Digital Public Safety Challenge. Protecting digital sovereignty."
+  }
+}
