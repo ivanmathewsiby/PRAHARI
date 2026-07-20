@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "prahari123"
+    ADMIN_API_KEY: str = "change-me-for-demo"
 
     model_config = SettingsConfigDict(
         env_file=".env",

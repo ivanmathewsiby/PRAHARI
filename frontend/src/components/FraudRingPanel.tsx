@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import CytoscapeComponent from "react-cytoscapejs";
 import cytoscape from "cytoscape";
 import {
@@ -21,7 +21,14 @@ import {
   MapPin,
   ExternalLink,
   RefreshCw,
+  Radio,
 } from "lucide-react";
+
+interface LiveRingJoin {
+  ringId: string;
+  incidentId: string;
+  joinedAt: string;
+}
 
 const NODE_COLORS: Record<string, string> = {
   Report: "#6366f1",
@@ -74,6 +81,16 @@ const styleSheet: any = [
     style: {
       "border-width": 4,
       "border-color": "#dc2626",
+    },
+  },
+  {
+    selector: "node[isNew = 'true']",
+    style: {
+      "border-width": 6,
+      "border-color": "#ef4444",
+      "background-color": "#dc2626",
+      width: 54,
+      height: 54,
     },
   },
   {
@@ -187,6 +204,7 @@ export default function FraudRingPanel() {
   const [loading, setLoading] = useState(true);
   const [graphLoading, setGraphLoading] = useState(false);
   const [backendOnline, setBackendOnline] = useState(true);
+  const [liveJoin, setLiveJoin] = useState<LiveRingJoin | null>(null);
 
   const fetchRings = useCallback(async () => {
     setLoading(true);
@@ -194,8 +212,8 @@ export default function FraudRingPanel() {
       const data = await getRings();
       setRings(data);
       setBackendOnline(true);
-      if (data.length > 0 && !selectedRingId) {
-        setSelectedRingId(data[0].ring_id);
+      if (data.length > 0) {
+        setSelectedRingId((current) => current || data[0].ring_id);
       }
     } catch {
       setBackendOnline(false);
@@ -203,11 +221,33 @@ export default function FraudRingPanel() {
     } finally {
       setLoading(false);
     }
-  }, [selectedRingId]);
+  }, []);
 
   useEffect(() => {
     fetchRings();
   }, []);
+
+  useEffect(() => {
+    const applyJoin = (raw: string | null) => {
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as LiveRingJoin;
+        const age = Date.now() - new Date(parsed.joinedAt).getTime();
+        if (!parsed.ringId || !parsed.incidentId || age > 5 * 60_000) return;
+        setLiveJoin(parsed);
+        setSelectedRingId(parsed.ringId);
+        void fetchRings();
+      } catch {
+        // Ignore malformed local demo handoff data.
+      }
+    };
+    applyJoin(localStorage.getItem("prahari:last-ring-join"));
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "prahari:last-ring-join") applyJoin(event.newValue);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [fetchRings]);
 
   useEffect(() => {
     if (!selectedRingId) return;
@@ -255,6 +295,22 @@ export default function FraudRingPanel() {
         </button>
       </div>
 
+      {liveJoin && (
+        <div className="flex items-center justify-between gap-4 border-b border-red-200 bg-red-50 px-5 py-3 text-red-900 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-red-600 text-white">
+              <span className="absolute inset-0 animate-ping rounded-full bg-red-500 opacity-30" />
+              <Radio className="relative h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider">Live citizen report joined {liveJoin.ringId}</p>
+              <p className="mt-0.5 text-[11px] text-red-700 dark:text-red-400">Incident {liveJoin.incidentId} matched shared suspected infrastructure.</p>
+            </div>
+          </div>
+          <span className="hidden rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase sm:inline dark:bg-zinc-950">New signal</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-gray-100 dark:divide-zinc-800">
         {/* Left: Ring list */}
         <div className="lg:col-span-1 max-h-[500px] overflow-y-auto">
@@ -272,7 +328,9 @@ export default function FraudRingPanel() {
                   onClick={() => setSelectedRingId(ring.ring_id)}
                   className={`w-full text-left p-3 rounded-xl transition-colors ${
                     selectedRingId === ring.ring_id
-                      ? "bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/30"
+                      ? liveJoin?.ringId === ring.ring_id
+                        ? "animate-pulse bg-red-50 dark:bg-red-950/20 border border-red-300 dark:border-red-900/40"
+                        : "bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/30"
                       : "hover:bg-gray-50 dark:hover:bg-zinc-800/50 border border-transparent"
                   }`}
                 >
@@ -328,6 +386,7 @@ export default function FraudRingPanel() {
                     label: n.label,
                     type: n.type,
                     hub_rank: n.hub_rank,
+                    isNew: liveJoin?.incidentId && n.id === `Report:${liveJoin.incidentId}` ? "true" : "false",
                   },
                 })),
                 ...graphData.edges.map((e) => ({

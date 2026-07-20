@@ -33,4 +33,8 @@ class IncidentEvent(Base):
 
     redaction_summary = Column(String)
 
+    retention_days = Column(Integer)
+
+    expires_at = Column(DateTime)
+
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -16,7 +16,7 @@
       "title": "Core Capabilities",
       "scam": {
         "title": "Scam Detection",
-        "desc": "Analyze chats, transcripts, or screenshots to expose Digital Arrest and coercion tactics."
+        "desc": "Analyze chats, text files, or private on-device speech to expose Digital Arrest and coercion tactics."
       },
       "fraud": {
         "title": "Fraud Intelligence",
@@ -34,7 +34,7 @@
   },
   "check": {
     "title": "Check Suspicious Interaction",
-    "subtitle": "Analyze messages, transcripts, PDFs, or screenshots to assess fraud risk.",
+    "subtitle": "Privately check pasted messages, text files, or supported on-device speech before money moves.",
     "tabs": {
       "text": "Paste Text",
       "screenshot": "Upload Screenshot",
@@ -43,7 +43,7 @@
     },
     "dropzone": {
       "dragText": "Drag and drop your file here, or click to browse",
-      "support": "Supports PNG, JPG, PDF, or TXT up to 10MB",
+      "support": "Supports TXT, MD, or CSV files up to 10MB",
       "selected": "Selected file:"
     },
     "textarea": {
@@ -75,7 +75,7 @@
     "copyComplaint": "Copy Complaint",
     "returnHome": "Return Home",
     "copied": "Complaint copied to clipboard!",
-    "downloaded": "Complaint downloaded as PDF!",
+    "downloaded": "Complaint downloaded as text!",
     "printed": "Document print dialog opened."
   },
   "familyModal": {
@@ -96,7 +96,7 @@
   "complaint": {
     "toolbar": {
       "copy": "Copy Text",
-      "download": "Download PDF",
+      "download": "Download TXT",
       "print": "Print Document"
     }
   },

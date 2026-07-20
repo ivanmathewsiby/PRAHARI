@@ -33,6 +33,29 @@ class GraphService:
         return {"ingested": 1}
 
     @staticmethod
+    def link_incident_to_existing_ring(report_id: str):
+        """Attach a new report only through reused, discriminative identifiers."""
+        query = """
+        MATCH (fresh:Report {report_id: $report_id})
+        OPTIONAL MATCH (fresh)-[:USED_NUMBER|REQUESTED_PAYMENT_TO]->(identifier)
+                       <-[:USED_NUMBER|REQUESTED_PAYMENT_TO]-(known:Report)
+        WHERE known.report_id <> fresh.report_id AND known.ring_id IS NOT NULL
+        WITH fresh, head(collect(known.ring_id)) AS existing_ring
+        FOREACH (_ IN CASE WHEN existing_ring IS NULL THEN [] ELSE [1] END |
+            SET fresh.ring_id = existing_ring
+        )
+        RETURN fresh.ring_id AS ring_id
+        """
+        return run_write_query(query, {"report_id": report_id})
+
+    @staticmethod
+    def delete_incident(report_id: str):
+        return run_write_query(
+            "MATCH (r:Report {report_id: $report_id}) DETACH DELETE r",
+            {"report_id": report_id},
+        )
+
+    @staticmethod
     def _ingest_one(incident):
         transcript = incident.transcript or ""
         transcript_preview = transcript[:200] if len(transcript) > 200 else transcript

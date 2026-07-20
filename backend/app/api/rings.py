@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -8,6 +8,13 @@ router = APIRouter(
     prefix="/api",
     tags=["Rings"],
 )
+
+
+def require_admin(x_admin_key: str = Header(default="")):
+    from app.core.config import settings
+
+    if not settings.ADMIN_API_KEY or x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Admin key required")
 
 
 @router.get("/rings")
@@ -47,19 +54,19 @@ def get_ring_graph(ring_id: str):
     return graph
 
 
-@router.post("/graph/ingest")
+@router.post("/graph/ingest", dependencies=[Depends(require_admin)])
 def ingest_all(db: Session = Depends(get_db)):
     result = GraphService.ingest_all_incidents(db)
     return result
 
 
-@router.post("/graph/init")
+@router.post("/graph/init", dependencies=[Depends(require_admin)])
 def init_schema():
     result = GraphService.initialize()
     return result
 
 
-@router.post("/graph/clear")
+@router.post("/graph/clear", dependencies=[Depends(require_admin)])
 def clear_graph():
     result = GraphService.clear_graph()
     return result

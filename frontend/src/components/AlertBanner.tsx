@@ -3,13 +3,14 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "../context/LanguageContext";
-import { AlertTriangle, Users, PhoneCall, FileEdit, Clipboard, Home } from "lucide-react";
+import { AlertTriangle, Users, PhoneCall, FileEdit, Clipboard, Home, FileDown } from "lucide-react";
 
 interface AlertBannerProps {
   onNotifyFamily: () => void;
   onGenerateComplaint: () => void;
   onCopyComplaint: () => void;
   onReturnHome: () => void;
+  onDownloadEvidence: () => void;
   complaintGenerated: boolean;
 }
 
@@ -18,6 +19,7 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
   onGenerateComplaint,
   onCopyComplaint,
   onReturnHome,
+  onDownloadEvidence,
   complaintGenerated,
 }) => {
   const { t } = useTranslation();
@@ -76,6 +78,13 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
         </span>
         
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={onDownloadEvidence}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-red-100/50 dark:hover:bg-zinc-850 transition-colors"
+          >
+            <FileDown className="h-3.5 w-3.5" />
+            1930-ready packet
+          </button>
           {!complaintGenerated ? (
             <button
               onClick={onGenerateComplaint}

@@ -37,6 +37,8 @@ class IncidentResponse(BaseModel):
     consent_scope: Optional[str] = None
     local_only: Optional[bool] = None
     redaction_summary: Optional[str] = None
+    retention_days: Optional[int] = None
+    expires_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:

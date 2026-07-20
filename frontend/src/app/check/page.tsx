@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useTranslation } from "../../context/LanguageContext";
-import { getAnalysisResult, AnalysisResponse } from "../../data/mockAnalysis";
-import { createIncident, createAuditLog } from "../../lib/api";
+import type { AnalysisResponse } from "../../data/mockAnalysis";
+import { analyzeConsentedEvidence, deleteIncident } from "../../lib/api";
+import { analyzeLocally } from "../../lib/mitLocalAnalysis";
 import { UploadDropzone } from "../../components/UploadDropzone";
 import { LoadingAnimation } from "../../components/LoadingAnimation";
 import { RiskGauge } from "../../components/RiskGauge";
@@ -15,6 +16,8 @@ import { AlertBanner } from "../../components/AlertBanner";
 import { FamilyShieldModal } from "../../components/FamilyShieldModal";
 import { ComplaintPreview } from "../../components/ComplaintPreview";
 import { RecommendationCard } from "../../components/RecommendationCard";
+import { LocalWhisperCapture } from "../../components/LocalWhisperCapture";
+import { ConsentReceipt, PrivacyProofBar, type ConsentReceiptData } from "../../components/PrivacyProof";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import {
   AlertTriangle,
@@ -26,8 +29,6 @@ import {
   ClipboardList,
   ChevronDown,
   Lock,
-  Mic,
-  MicOff,
   Send,
   ShieldCheck,
   Trash2,
@@ -92,17 +93,21 @@ export default function CheckPage() {
   const [localReviewPayload, setLocalReviewPayload] = useState<LocalReviewPayload | null>(null);
   const [sharedScope, setSharedScope] = useState<PrivacyShareScope | "local_only" | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [sharedRingId, setSharedRingId] = useState<string | null>(null);
+  const [sharedIncidentId, setSharedIncidentId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"not_shared" | "shared" | "local_only" | "offline">("not_shared");
   const [familyModalOpen, setFamilyModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [explainOpen, setExplainOpen] = useState(false);
   const [scanId, setScanId] = useState(() => `PR-${Math.floor(100000 + Math.random() * 900000)}`);
-  const [liveListening, setLiveListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const [evidenceBytes, setEvidenceBytes] = useState(0);
+  const [retentionDays, setRetentionDays] = useState<1 | 7 | 30>(7);
+  const [consentReceipt, setConsentReceipt] = useState<ConsentReceiptData | null>(null);
+  const [whisperPrivacy, setWhisperPrivacy] = useState({ modelState: "not loaded", audioStored: false });
 
   // Quick Demo texts to help judges evaluate the app easily
   const demoScenarios = {
-    critical: "This is the Cyber Crime Branch DCP. You are under virtual arrest. Do not disconnect this line. Your bank accounts are linked to a money laundering syndicate, and narcotics were found in a package under your name. You must transfer ₹85,000 immediately to a verification vault or we will dispatch a field unit to arrest you within 30 minutes.",
+    critical: "This is CBI officer Sharma. A narcotics parcel was booked under your Aadhaar at Mumbai customs. You are under digital arrest. Do not tell your family and do not disconnect. Transfer Rs.85,000 to cbi.verify@upi immediately or we will arrest you within 30 minutes.",
     suspicious: "SECURITY ALERT: We have noticed an unusual foreign transaction on your card. To verify your compliance status and prevent an immediate account block, please confirm your current savings bank account balance and click the official verify link. Keep this audit details confidential.",
     safe: "Hi dad, I reached the hostel safely. The train was on time. I'll call you in the evening when I get free. Please send me the notes we left on the table if you find them. Love you!",
   };
@@ -113,51 +118,16 @@ export default function CheckPage() {
     setActiveTab("text");
   };
 
-  const handleToggleLiveMic = () => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      showToast("Live speech recognition is not available in this browser. Paste mode still stays private.");
-      return;
-    }
-
-    if (liveListening) {
-      recognitionRef.current?.stop();
-      setLiveListening(false);
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = language === "hi" ? "hi-IN" : "en-IN";
-
-    recognition.onresult = (event: any) => {
-      let nextTranscript = "";
-      for (let i = 0; i < event.results.length; i += 1) {
-        nextTranscript += `${event.results[i][0].transcript} `;
-      }
-      setInputText(nextTranscript.trim());
-    };
-
-    recognition.onerror = () => {
-      setLiveListening(false);
-      showToast("Mic capture stopped. No audio was uploaded.");
-    };
-
-    recognition.onend = () => setLiveListening(false);
-    recognitionRef.current = recognition;
-    setActiveTab("live");
-    setLiveListening(true);
-    recognition.start();
-  };
-
   const handleAnalyze = async () => {
-    let textToAnalyze = inputText;
+    let textToAnalyze = inputText.trim();
     
     if (activeTab !== "text" && selectedFile) {
-      textToAnalyze = `File: ${selectedFile.name} (Type: ${selectedFile.type}). ${selectedFile.name.replace(/\.[^/.]+$/, "")}`;
+      const isTextFile = selectedFile.type.startsWith("text/") || /\.(txt|md|csv)$/i.test(selectedFile.name);
+      if (!isTextFile) {
+        showToast("Private extraction for this file type is not available yet. Use a text file or paste the transcript.");
+        return;
+      }
+      textToAnalyze = (await selectedFile.text()).trim();
     }
 
     if (!textToAnalyze && !selectedFile) return;
@@ -166,13 +136,17 @@ export default function CheckPage() {
     setResult(null);
     setLocalReviewPayload(null);
     setSharedScope(null);
+    setSharedRingId(null);
+    setSharedIncidentId(null);
     setSyncStatus("not_shared");
+    setEvidenceBytes(0);
+    setConsentReceipt(null);
 
     try {
-      const analysisResult = await getAnalysisResult(textToAnalyze, selectedFile?.name);
+      const analysisResult = await analyzeLocally(textToAnalyze);
       setResult(analysisResult);
       setLocalReviewPayload(buildReviewPayload(textToAnalyze, analysisResult));
-      
+
       if (analysisResult.risk === "safe") {
         setSyncStatus("local_only");
         setSharedScope("local_only");
@@ -201,62 +175,56 @@ export default function CheckPage() {
 
     setSharing(true);
     try {
-      const incident = await createIncident({
+      const sharedAnalysis = await analyzeConsentedEvidence({
         citizen_name: "Anonymous Citizen",
-        phone_number: "Shared only if present in evidence",
         transcript: transcriptToShare,
         location: "Consent-based citizen report",
+        language: language === "hi" ? "hi-IN" : "en-IN",
+        source_channel: "citizen_web",
         consent_status: "GRANTED",
         consent_scope: scope,
-        local_only: false,
         redaction_summary: scope === "full_transcript"
           ? "User explicitly chose to share the full transcript."
           : localReviewPayload.redactionSummary,
+        retention_days: retentionDays,
       });
 
-      const dbRiskLevel = result.risk === "critical" ? "CRITICAL" : "MEDIUM";
-      const dbFraudType = result.risk === "critical" ? "Digital Arrest Scam" : "Suspicious Communication";
-
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      await fetch(`${API_BASE}/api/incidents/${incident.incident_id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "OPEN",
-          risk_level: dbRiskLevel,
-          fraud_type: dbFraudType,
-          consent_status: "GRANTED",
-          consent_scope: scope,
-          local_only: false,
-          redaction_summary: scope === "full_transcript"
-            ? "User explicitly chose to share the full transcript."
-            : localReviewPayload.redactionSummary,
-        })
-      });
-
-      await createAuditLog({
-        incident_id: incident.incident_id,
-        action: "CONSENT_GRANTED_AND_INCIDENT_ANALYZED",
-        rule_hits: result.risk === "critical"
-          ? ["authority_impersonation", "coercion", "isolation_directive", "payment_threat"]
-          : ["confidentiality_claim", "verify_credentials"],
-        model_version: "local-private-rules-v1",
-        prompt_version: "no-llm-device-first",
-        score_components: {
-          coercion_score: result.score,
-          confidence_index: result.confidence,
-          privacy_mode: "device_first",
-          consent_scope: scope,
-          redaction_summary: scope === "full_transcript"
-            ? "User explicitly chose to share the full transcript."
-            : localReviewPayload.redactionSummary,
-        },
-        threshold_version: "privacy-first-v1.0"
-      });
+      if (!sharedAnalysis.persisted) {
+        setSyncStatus("local_only");
+        showToast("The approved excerpt did not contain enough risk evidence to create a report. It remains private.");
+        return;
+      }
 
       setSharedScope(scope);
+      setSharedRingId(sharedAnalysis.ring_id || null);
+      setSharedIncidentId(sharedAnalysis.incident_id || null);
       setSyncStatus("shared");
-      showToast("Shared with consent. Evidence is now available for complaint and graph intelligence.");
+      const payloadBytes = new Blob([transcriptToShare]).size;
+      setEvidenceBytes(payloadBytes);
+      const createdAt = new Date();
+      setConsentReceipt({
+        scanId,
+        incidentId: sharedAnalysis.incident_id || "not-persisted",
+        consentScope: scope,
+        evidenceBytes: payloadBytes,
+        redactionSummary: scope === "full_transcript"
+          ? "User explicitly chose to share the full transcript."
+          : localReviewPayload.redactionSummary,
+        createdAt: createdAt.toISOString(),
+        expiresAt: sharedAnalysis.expires_at || new Date(createdAt.getTime() + retentionDays * 86_400_000).toISOString(),
+        retentionDays: sharedAnalysis.retention_days || retentionDays,
+        ringId: sharedAnalysis.ring_id,
+      });
+      if (sharedAnalysis.ring_id && sharedAnalysis.incident_id) {
+        localStorage.setItem("prahari:last-ring-join", JSON.stringify({
+          ringId: sharedAnalysis.ring_id,
+          incidentId: sharedAnalysis.incident_id,
+          joinedAt: new Date().toISOString(),
+        }));
+      }
+      showToast(sharedAnalysis.ring_id
+        ? `Shared with consent and linked to ${sharedAnalysis.ring_id}.`
+        : "Shared with consent. The report is available for graph intelligence.");
     } catch (apiError) {
       console.warn("FastAPI backend is offline. Risk result remains local.", apiError);
       setSyncStatus("offline");
@@ -272,13 +240,36 @@ export default function CheckPage() {
     showToast("Kept private. Nothing was sent to PRAHARI.");
   };
 
+  const handleWithdrawConsent = async () => {
+    if (!sharedIncidentId) return;
+    setSharing(true);
+    try {
+      await deleteIncident(sharedIncidentId);
+      setSharedIncidentId(null);
+      setSharedRingId(null);
+      setSharedScope("local_only");
+      setSyncStatus("local_only");
+      setEvidenceBytes(0);
+      setConsentReceipt(null);
+      showToast("Consent withdrawn. The incident, audit payload, and graph report were deleted.");
+    } catch {
+      showToast("Deletion could not be confirmed. Please try again while the backend is online.");
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const handleReset = () => {
     setResult(null);
     setInputText("");
     setSelectedFile(null);
     setLocalReviewPayload(null);
     setSharedScope(null);
+    setSharedRingId(null);
+    setSharedIncidentId(null);
     setSyncStatus("not_shared");
+    setEvidenceBytes(0);
+    setConsentReceipt(null);
     setScanId(`PR-${Math.floor(100000 + Math.random() * 900000)}`);
   };
 
@@ -301,9 +292,37 @@ export default function CheckPage() {
     }
   };
 
+  const handleDownloadEvidencePacket = () => {
+    if (!result || !localReviewPayload) return;
+    const packet = {
+      document_type: "PRAHARI_1930_READY_EVIDENCE_PACKET",
+      submission_status: "NOT_SUBMITTED",
+      notice: "Citizen aid for review and manual submission through 1930 or cybercrime.gov.in.",
+      scan_id: scanId,
+      incident_id: sharedIncidentId,
+      created_at: new Date().toISOString(),
+      risk: { label: result.risk.toUpperCase(), score: result.score, confidence: result.confidence },
+      phases: result.timeline.filter((phase) => phase.detected).map((phase) => phase.phase),
+      evidence_spans: localReviewPayload.selectedEvidence,
+      redaction_summary: localReviewPayload.redactionSummary,
+      graph_ring_id: sharedRingId,
+      consent_receipt: consentReceipt,
+      complaint_draft: language === "hi" ? result.complaintDraft_hi : result.complaintDraft,
+      next_actions: ["Call 1930", "Do not transfer money", "Submit through cybercrime.gov.in", "Preserve original messages and payment identifiers"],
+    };
+    const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `PRAHARI-1930-packet-${scanId}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    showToast("1930-ready evidence packet downloaded. It has not been submitted automatically.");
+  };
+
   return (
     <div className="relative flex-grow py-12 px-4 sm:px-6 lg:px-8 bg-gray-50/20 dark:bg-zinc-950 transition-colors duration-200">
-      
+
       {/* Background Mesh */}
       <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:24px_24px] dark:bg-[radial-gradient(#1f1f23_1px,transparent_1px)] opacity-50 dark:opacity-30 pointer-events-none z-0" />
 
@@ -323,7 +342,7 @@ export default function CheckPage() {
       </AnimatePresence>
 
       <div className="relative z-10 max-w-5xl mx-auto space-y-8">
-        
+
         {/* Page Titles */}
         {!result && !loading && (
           <div className="text-center space-y-2">
@@ -385,11 +404,17 @@ export default function CheckPage() {
                   <ArrowLeft className="h-4 w-4" />
                   New Verification Scan
                 </button>
-                
+
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-widest bg-gray-100 dark:bg-zinc-900 px-3 py-1 rounded-full">
                   Scan ID: {scanId}
                 </span>
               </div>
+
+              <PrivacyProofBar
+                evidenceBytes={evidenceBytes}
+                modelStatus={whisperPrivacy.modelState}
+                audioInMemory={whisperPrivacy.audioStored}
+              />
 
               <div className={`rounded-2xl border p-4 text-left ${
                 syncStatus === "shared"
@@ -405,14 +430,26 @@ export default function CheckPage() {
                       </h3>
                       <p className="mt-1 text-xs leading-relaxed text-gray-600 dark:text-zinc-400">
                         {syncStatus === "shared"
-                          ? `Only the ${sharedScope?.replaceAll("_", " ")} package was sent after your approval.`
-                          : "This result was produced locally. Nothing leaves your device unless you choose a sharing option below."}
+                          ? `Only the ${sharedScope?.replaceAll("_", " ")} package was sent after your approval.${sharedRingId ? ` It joined ${sharedRingId}.` : ""}`
+                          : "Mit's deterministic safety engine produced this result locally. Nothing leaves your device unless you choose a sharing option below."}
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-full border border-current/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
-                    {syncStatus === "shared" ? "Network enabled" : "Local only"}
-                  </span>
+                  {syncStatus === "shared" ? (
+                    <button
+                      type="button"
+                      onClick={handleWithdrawConsent}
+                      disabled={sharing || !sharedIncidentId}
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-800/20 px-3 py-2 text-xs font-semibold transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-emerald-950/40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Withdraw and delete
+                    </button>
+                  ) : (
+                    <span className="rounded-full border border-current/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
+                      Local only
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -423,6 +460,7 @@ export default function CheckPage() {
                   onGenerateComplaint={handleScrollToComplaint}
                   onCopyComplaint={handleCopyComplaint}
                   onReturnHome={handleReset}
+                  onDownloadEvidence={handleDownloadEvidencePacket}
                   complaintGenerated={true}
                 />
               )}
@@ -442,6 +480,8 @@ export default function CheckPage() {
                 </div>
               )}
 
+              {consentReceipt && <ConsentReceipt receipt={consentReceipt} />}
+
               {result.risk !== "safe" && localReviewPayload && syncStatus !== "shared" && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -459,6 +499,18 @@ export default function CheckPage() {
                     </div>
 
                     <div className="flex flex-col gap-2 sm:min-w-64">
+                      <label className="text-xs font-semibold text-gray-600 dark:text-zinc-400">
+                        Automatic deletion
+                        <select
+                          value={retentionDays}
+                          onChange={(event) => setRetentionDays(Number(event.target.value) as 1 | 7 | 30)}
+                          className="mt-1.5 w-full rounded-lg border border-gray-250 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+                        >
+                          <option value={1}>After 24 hours</option>
+                          <option value={7}>After 7 days</option>
+                          <option value={30}>After 30 days</option>
+                        </select>
+                      </label>
                       <button
                         disabled={sharing}
                         onClick={() => handleShareEvidence("selected_evidence")}
@@ -513,7 +565,7 @@ export default function CheckPage() {
 
               {/* Core Layout Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-                
+
                 {/* Left Column: Risk Gauge & Recommendations */}
                 <div className="lg:col-span-1 space-y-6">
                   <RiskGauge
@@ -556,7 +608,7 @@ export default function CheckPage() {
                         </span>
                         <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${explainOpen ? "rotate-180" : ""}`} />
                       </button>
-                      
+
                       <AnimatePresence initial={false}>
                         {explainOpen && (
                           <motion.div
@@ -621,7 +673,7 @@ export default function CheckPage() {
               <FamilyShieldModal
                 isOpen={familyModalOpen}
                 onClose={() => setFamilyModalOpen(false)}
-                onSuccess={(msg) => {
+                onSuccess={() => {
                   showToast(t("familyModal.success"));
                   confetti({
                     particleCount: 50,
@@ -643,15 +695,15 @@ export default function CheckPage() {
               exit={{ opacity: 0 }}
               className="max-w-3xl mx-auto"
             >
-              <div className="bg-white dark:bg-zinc-900 border border-gray-150 dark:border-zinc-800 rounded-3xl shadow-lg shadow-gray-100/30 dark:shadow-none overflow-hidden text-left">
-                
+              <div className="overflow-hidden rounded-2xl border border-gray-150 bg-white text-left dark:border-zinc-800 dark:bg-zinc-900">
+
                 {/* Header title tab bar */}
                 <div className="px-6 py-5 border-b border-gray-150 dark:border-zinc-850 flex items-center justify-between">
                   <span className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <ClipboardList className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                     {t("check.title")}
                   </span>
-                  
+
                   {/* Quick-try buttons for demo evaluations */}
                   <div className="hidden sm:flex items-center gap-1.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1">
@@ -678,12 +730,18 @@ export default function CheckPage() {
                   </div>
                 </div>
 
+                <PrivacyProofBar
+                  evidenceBytes={evidenceBytes}
+                  modelStatus={whisperPrivacy.modelState}
+                  audioInMemory={whisperPrivacy.audioStored}
+                />
+
                 <div className="p-6">
                   <Tabs value={activeTab} onValueChange={(val) => {
                     setActiveTab(val);
                     setSelectedFile(null);
                   }} className="space-y-6">
-                    <TabsList className="grid grid-cols-2 md:grid-cols-5 bg-gray-100 dark:bg-zinc-950 p-1 rounded-xl gap-1">
+                    <TabsList className="grid grid-cols-3 bg-gray-100 dark:bg-zinc-950 p-1 rounded-xl gap-1">
                       <TabsTrigger
                         value="text"
                         className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
@@ -691,22 +749,10 @@ export default function CheckPage() {
                         {t("check.tabs.text")}
                       </TabsTrigger>
                       <TabsTrigger
-                        value="screenshot"
-                        className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
-                      >
-                        {t("check.tabs.screenshot")}
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="pdf"
-                        className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
-                      >
-                        {t("check.tabs.pdf")}
-                      </TabsTrigger>
-                      <TabsTrigger
                         value="transcript"
                         className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
                       >
-                        {t("check.tabs.transcript")}
+                        Text File
                       </TabsTrigger>
                       <TabsTrigger
                         value="live"
@@ -752,62 +798,26 @@ export default function CheckPage() {
                       />
                     </TabsContent>
 
-                    {/* Tab Contents: Screenshot Dropzone */}
-                    <TabsContent value="screenshot" className="mt-0">
-                      <UploadDropzone
-                        accept="image/*"
-                        onFileSelect={setSelectedFile}
-                        selectedFile={selectedFile}
-                      />
-                    </TabsContent>
-
-                    {/* Tab Contents: PDF Dropzone */}
-                    <TabsContent value="pdf" className="mt-0">
-                      <UploadDropzone
-                        accept=".pdf"
-                        onFileSelect={setSelectedFile}
-                        selectedFile={selectedFile}
-                      />
-                    </TabsContent>
-
                     {/* Tab Contents: Transcript Dropzone */}
                     <TabsContent value="transcript" className="mt-0">
                       <UploadDropzone
-                        accept=".txt,.doc,.docx"
+                        accept=".txt,.md,.csv,text/plain,text/markdown,text/csv"
                         onFileSelect={setSelectedFile}
                         selectedFile={selectedFile}
                       />
                     </TabsContent>
 
                     <TabsContent value="live" className="mt-0">
-                      <div className="rounded-xl border border-gray-250 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
-                              <Mic className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                              Private live call check
-                            </h3>
-                            <p className="mt-1 text-xs leading-relaxed text-gray-600 dark:text-zinc-400">
-                              Uses this browser's speech recognition. Audio is not uploaded; PRAHARI only scans the live text on this device.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleToggleLiveMic}
-                            className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                              liveListening
-                                ? "bg-red-600 text-white hover:bg-red-700"
-                                : "bg-indigo-600 text-white hover:bg-indigo-700"
-                            }`}
-                          >
-                            {liveListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                            {liveListening ? "Stop listening" : "Start live scan"}
-                          </button>
-                        </div>
+                      <div className="space-y-3">
+                        <LocalWhisperCapture
+                          transcript={inputText}
+                          onTranscript={setInputText}
+                          onPrivacyStatus={setWhisperPrivacy}
+                        />
                         <textarea
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
-                          placeholder="Live transcript appears here while the call is on speaker..."
+                          placeholder="The private transcript appears here after you stop capture..."
                           rows={6}
                           className="mt-4 w-full resize-none rounded-xl border border-gray-250 bg-gray-50 p-4 text-sm font-medium leading-relaxed text-gray-800 placeholder-gray-500 focus:border-indigo-500/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-gray-200 dark:placeholder-zinc-500"
                         />
@@ -825,7 +835,7 @@ export default function CheckPage() {
                       <RefreshCw className="h-3.5 w-3.5" />
                       Clear Fields
                     </button>
-                    
+
                     <button
                       disabled={(!inputText && !selectedFile)}
                       onClick={handleAnalyze}

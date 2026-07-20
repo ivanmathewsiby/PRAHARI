@@ -8,7 +8,7 @@
 
 Open `http://localhost:3000/check`.
 
-Point out the three privacy promises above the input: private device scan, safe results never uploaded, and risky evidence shared only after consent.
+Point out the live privacy meter: on-device analysis, `0 B` evidence uploaded, and no stored audio.
 
 Paste:
 
@@ -16,13 +16,15 @@ Paste:
 This is CBI officer Sharma. A parcel containing narcotics was booked under your Aadhaar at Mumbai customs. You are under digital arrest. Do not tell your family. Transfer Rs.85,000 to cbi.verify@upi immediately or we will arrest you.
 ```
 
-Click `Check Now`. Show that the risk result appears as a private local result first. Then use `Share selected evidence` to create the backend incident for complaint generation and graph intelligence.
+Click `Check Now`. Show that Mit's deterministic pass produces a private local result first. Then use `Share selected evidence`. The consented backend analysis reuses `cbi.verify@upi`, creates one incident and audit record, ingests it automatically, and attaches it to the seeded ring.
 
-Optional: open the `Live` tab and use `Start live scan` to fill the transcript through the browser speech recognizer. Explain that the demo uses browser-side speech recognition and still does not upload audio.
+Open the `Live` tab, prepare the cached Whisper model, then record a short speakerphone segment. Explain that WebGPU is used when available and WebAssembly is the fallback; the model download is separate from evidence upload and microphone audio stays in browser memory.
+
+Before sharing, select the 24-hour retention option. After consent, show the byte counter and download the consent receipt.
 
 ## 1:15 - Offline Safety Story
 
-Explain that this repo leaves Mit's AI/ML endpoint untouched. The current citizen UI still works as an offline safety demo using deterministic local mock analysis and stores records only after a risky result plus user consent.
+Disconnect the network before the first scan. The private deterministic result still works and SAFE content creates no backend request. Reconnect only for the consented share; the backend can still use Mit's deterministic fallback when the optional LLM is disabled.
 
 ## 1:40 - Officer Command
 
@@ -34,6 +36,9 @@ Show:
 - Graph ring list.
 - Selected ring graph.
 - Top suspected mule infrastructure.
+- The live ring-join banner, pulsing ring row, and newly highlighted report node.
+
+Show the benchmark strip: 120 reproducible synthetic English/Hindi/Hinglish cases. Say explicitly that it is a prototype benchmark, not field validation.
 
 ## 2:20 - Ring Evidence
 
@@ -53,6 +58,7 @@ Point out that the evidence package says it is for law-enforcement review, not a
 ## Simulated vs Real
 
 - Real: FastAPI routes, PostgreSQL persistence, Alembic migration, Neo4j ingestion, ring clustering, dashboard reads.
-- Simulated: AI/ML classifier, Family Shield notification, hidden-test metrics.
-- Privacy behavior: local-first scan and consent gate are implemented in the frontend demo; production mobile builds should use OS/on-device ASR and local models for the same policy.
+- Real: Mit's deterministic rules, fusion, offline fallback, consent gate, deletion lifecycle, and `/api/analyze` integration.
+- Simulated: Family Shield notification and any hidden-test metrics not produced from a separately held dataset.
+- Privacy behavior: local-first text analysis, browser-local Whisper transcription, consent scope, automatic expiry, consent receipt, and deletion lifecycle are implemented.
 - Synthetic: Seeded fraud rings and demo transcripts.

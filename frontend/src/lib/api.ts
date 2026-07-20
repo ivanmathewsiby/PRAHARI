@@ -181,6 +181,48 @@ export interface RingSummary {
   campaign_early_warning_index?: number;
 }
 
+export interface ConsentedAnalysisInput {
+  transcript: string;
+  citizen_name?: string;
+  phone_number?: string;
+  location?: string;
+  language: string;
+  source_channel: string;
+  consent_status: "GRANTED";
+  consent_scope: "selected_evidence" | "redacted_transcript" | "full_transcript";
+  redaction_summary?: string;
+  retention_days: 1 | 7 | 30;
+}
+
+export interface ConsentedAnalysisResponse {
+  incident_id?: string;
+  persisted: boolean;
+  graph_synced: boolean;
+  ring_id?: string;
+  risk_label: "SAFE" | "SUSPICIOUS" | "CRITICAL";
+  risk_level: string;
+  risk_score: number;
+  mode: "full_analysis" | "offline_safety_analysis";
+  evidence_spans: string[];
+  entities: Record<string, unknown>;
+  plain_language_reason: string;
+  consent_scope: string;
+  retention_days?: number;
+  expires_at?: string;
+}
+
+export async function analyzeConsentedEvidence(
+  data: ConsentedAnalysisInput,
+): Promise<ConsentedAnalysisResponse> {
+  const res = await fetch(`${API_BASE}/api/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to analyze consented evidence");
+  return res.json();
+}
+
 export interface RingNode {
   id: string;
   label: string;

@@ -1,0 +1,25 @@
+{
+  "benchmark": "PRAHARI synthetic multilingual safety benchmark",
+  "generated_at": "2026-07-20T19:35:53.909358+00:00",
+  "dataset_size": 120,
+  "composition": {
+    "scams": 60,
+    "benign": 30,
+    "hard_negatives": 30
+  },
+  "languages": [
+    "English",
+    "Hindi",
+    "Hinglish"
+  ],
+  "mode": "offline deterministic rules",
+  "metrics": {
+    "scam_recall": 90.0,
+    "precision": 100.0,
+    "f1": 94.7,
+    "benign_false_positive_rate": 0.0,
+    "hard_negative_critical_rate": 0.0,
+    "detected_before_payment_language": 90.0
+  },
+  "disclosure": "Template-generated prototype benchmark; not a field or production validation set."
+}

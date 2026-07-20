@@ -65,13 +65,11 @@ def project_graph(driver):
             Report: { label: 'Report' },
             PhoneNumber: { label: 'PhoneNumber' },
             UPI_ID: { label: 'UPI_ID' },
-            BankAccount: { label: 'BankAccount' },
-            ClaimedAgency: { label: 'ClaimedAgency' }
+            BankAccount: { label: 'BankAccount' }
         },
         {
             USED_NUMBER: { type: 'USED_NUMBER', orientation: 'UNDIRECTED' },
-            REQUESTED_PAYMENT_TO: { type: 'REQUESTED_PAYMENT_TO', orientation: 'UNDIRECTED' },
-            CLAIMED_TO_BE: { type: 'CLAIMED_TO_BE', orientation: 'UNDIRECTED' }
+            REQUESTED_PAYMENT_TO: { type: 'REQUESTED_PAYMENT_TO', orientation: 'UNDIRECTED' }
         }
     )
     YIELD graphName, nodeCount, relationshipCount

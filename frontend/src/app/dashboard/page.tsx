@@ -21,6 +21,7 @@ import {
   DialogFooter,
 } from "../../components/ui/dialog";
 import FraudRingPanel from "../../components/FraudRingPanel";
+import { EvaluationProof } from "../../components/EvaluationProof";
 import {
   Shield,
   AlertOctagon,
@@ -303,6 +304,8 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+
+        <EvaluationProof />
 
         {/* Stats KPIs Cards */}
         {stats && (
