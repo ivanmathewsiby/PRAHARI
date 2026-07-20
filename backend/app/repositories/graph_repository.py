@@ -127,6 +127,11 @@ class GraphRepository:
             "stats": stats[0] if stats else {},
             "reports": [r["report"] for r in reports],
             "top_hubs": hubs,
+            "legal_reference": {
+                "caption": "For law-enforcement review - not a legal determination, requires human verification.",
+                "possible_sections": ["BNS 204", "BNS 318", "BNS 336", "BNS 308"],
+                "note": "This intelligence brief describes suspected shared infrastructure and must be verified by an authorized human reviewer before action.",
+            },
         }
 
     @staticmethod
@@ -136,7 +141,7 @@ class GraphRepository:
         OPTIONAL MATCH (r)-[rel]->(target)
         RETURN r.report_id AS source_id,
                type(rel) AS rel_type,
-               target.value AS target_value,
+               coalesce(target.value, target.name) AS target_value,
               [lbl IN labels(target) WHERE lbl IN ['PhoneNumber','UPI_ID','BankAccount','ClaimedAgency']][0] AS target_type,
                target.hub_rank AS hub_rank
         """
@@ -185,12 +190,20 @@ class GraphRepository:
 
         results = []
         for row in raw:
+            report_count = row["report_count"] or 0
+            city_count = row["city_count"] or 0
+            critical_count = row["critical_count"] or 0
+            early_warning_index = min(
+                100,
+                round((report_count * 8) + (city_count * 7) + (critical_count * 10), 1),
+            )
             results.append({
                 "ring_id": row["ring_id"],
-                "report_count": row["report_count"],
-                "city_count": row["city_count"],
-                "critical_count": row["critical_count"],
+                "report_count": report_count,
+                "city_count": city_count,
+                "critical_count": critical_count,
                 "agencies": list(set(a for a in row["agencies"] if a)),
+                "campaign_early_warning_index": early_warning_index,
             })
         return results
 

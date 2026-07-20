@@ -18,7 +18,7 @@ export const Navbar: React.FC = () => {
     { name: t("nav.home"), path: "/" },
     { name: t("nav.check"), path: "/check" },
     { name: t("nav.about"), path: "/about" },
-    { name: t("nav.dashboard"), path: "/dashboard" },
+    { name: t("nav.dashboard"), path: "/command" },
   ];
 
   const isActive = (path: string) => {

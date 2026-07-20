@@ -16,6 +16,10 @@ class IncidentRepository:
             phone_number=data.phone_number,
             transcript=data.transcript,
             location=data.location,
+            consent_status=data.consent_status,
+            consent_scope=data.consent_scope,
+            local_only=data.local_only,
+            redaction_summary=data.redaction_summary,
             fraud_type="Unknown",
             risk_level="PENDING",
             status="OPEN"
@@ -42,9 +46,10 @@ class IncidentRepository:
     @staticmethod
     def update(db: Session, incident, data):
 
-        incident.fraud_type = data.fraud_type
-        incident.risk_level = data.risk_level
-        incident.status = data.status
+        update_data = data.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            if value is not None:
+                setattr(incident, field, value)
 
         db.commit()
         db.refresh(incident)

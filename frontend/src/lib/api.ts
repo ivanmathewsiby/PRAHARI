@@ -10,6 +10,10 @@ export interface Incident {
   fraud_type: string;
   risk_level: string;
   status: string;
+  consent_status?: string;
+  consent_scope?: string;
+  local_only?: boolean;
+  redaction_summary?: string;
   created_at: string;
 }
 
@@ -18,12 +22,20 @@ export interface IncidentCreateInput {
   phone_number: string;
   transcript: string;
   location: string;
+  consent_status?: string;
+  consent_scope?: string;
+  local_only?: boolean;
+  redaction_summary?: string;
 }
 
 export interface IncidentUpdateInput {
   fraud_type?: string;
   risk_level?: string;
   status?: string;
+  consent_status?: string;
+  consent_scope?: string;
+  local_only?: boolean;
+  redaction_summary?: string;
 }
 
 export interface AuditCreateInput {
@@ -166,6 +178,7 @@ export interface RingSummary {
   city_count: number;
   critical_count: number;
   agencies: string[];
+  campaign_early_warning_index?: number;
 }
 
 export interface RingNode {
@@ -222,6 +235,11 @@ export interface EvidencePackage {
   };
   reports: EvidencePackageReport[];
   top_hubs: HubIdentifier[];
+  legal_reference?: {
+    caption: string;
+    possible_sections: string[];
+    note: string;
+  };
 }
 
 export async function getRings(): Promise<RingSummary[]> {

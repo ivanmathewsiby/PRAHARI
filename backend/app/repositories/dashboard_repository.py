@@ -31,7 +31,7 @@ class DashboardRepository:
 
         high = (
             db.query(IncidentEvent)
-            .filter(IncidentEvent.risk_level == "HIGH")
+            .filter(IncidentEvent.risk_level.in_(["HIGH", "CRITICAL"]))
             .count()
         )
 
@@ -72,7 +72,7 @@ class DashboardRepository:
 
         return (
             db.query(IncidentEvent)
-            .filter(IncidentEvent.risk_level == "HIGH")
+            .filter(IncidentEvent.risk_level.in_(["HIGH", "CRITICAL"]))
             .all()
         )
 

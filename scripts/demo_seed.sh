@@ -133,7 +133,7 @@ print(f'WCC found {len(wcc)} components (size>1)')
 for comp in wcc:
     ring_id = f'RING-{comp[\"componentId\"]}'
     run_write_query(
-        'UNWIND $nodes AS nodeId MATCH (n) WHERE elementId(n) = nodeId AND n:Report SET n.ring_id = $ring_id',
+        'UNWIND $nodes AS nodeId MATCH (n) WHERE id(n) = nodeId AND n:Report SET n.ring_id = $ring_id',
         {'nodes': comp['nodes'], 'ring_id': ring_id}
     )
     print(f'  {ring_id}: {comp[\"memberCount\"]} nodes')
@@ -142,7 +142,7 @@ deg = run_query(\"\"\"
 CALL gds.degree.stream('fraud-rings')
 YIELD nodeId, score
 WITH nodeId, score
-MATCH (n) WHERE elementId(n) = nodeId
+MATCH (n) WHERE id(n) = nodeId
 SET n.hub_rank = score
 RETURN count(*) AS updated
 \"\"\")
@@ -171,7 +171,7 @@ echo -e "${GREEN}  Demo Ready!${NC}"
 echo "=========================================="
 echo ""
 echo "  Citizen Check:      http://localhost:3000/check"
-echo "  Command Dashboard:  http://localhost:3000/dashboard"
+echo "  Command Dashboard:  http://localhost:3000/command"
 echo "  Backend API:        http://localhost:8000"
 echo "  API Docs:           http://localhost:8000/docs"
 echo "  Neo4j Browser:      http://localhost:7474 (neo4j/prahari123)"

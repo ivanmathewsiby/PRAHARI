@@ -286,6 +286,9 @@ export default function FraudRingPanel() {
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-[10px] text-gray-500">
                     <span>{ring.city_count} cities</span>
+                    {typeof ring.campaign_early_warning_index === "number" && (
+                      <span>{ring.campaign_early_warning_index} index</span>
+                    )}
                     {ring.critical_count > 0 && (
                       <span className="text-red-500 font-semibold">
                         {ring.critical_count} critical

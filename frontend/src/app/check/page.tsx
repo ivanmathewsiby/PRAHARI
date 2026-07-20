@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useTranslation } from "../../context/LanguageContext";
@@ -17,7 +17,6 @@ import { ComplaintPreview } from "../../components/ComplaintPreview";
 import { RecommendationCard } from "../../components/RecommendationCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import {
-  FileText,
   AlertTriangle,
   ArrowLeft,
   RefreshCw,
@@ -26,7 +25,62 @@ import {
   Sparkles,
   ClipboardList,
   ChevronDown,
+  Lock,
+  Mic,
+  MicOff,
+  Send,
+  ShieldCheck,
+  Trash2,
 } from "lucide-react";
+
+type PrivacyShareScope = "selected_evidence" | "redacted_transcript" | "full_transcript";
+
+interface LocalReviewPayload {
+  transcript: string;
+  redactedTranscript: string;
+  selectedEvidence: string[];
+  redactionSummary: string;
+}
+
+const redactSensitiveText = (text: string) => {
+  const rules = [
+    { pattern: /\b\d{4}\s?\d{4}\s?\d{4}\b/g, label: "Aadhaar-like numbers" },
+    { pattern: /\b[A-Z]{5}\d{4}[A-Z]\b/g, label: "PAN-like IDs" },
+    { pattern: /\b\d{4,8}\b(?=\s*(?:otp|code|pin|password))/gi, label: "OTP/PIN values" },
+    { pattern: /\b(?:otp|code|pin|password)\s*(?:is|:)?\s*\d{4,8}\b/gi, label: "OTP/PIN phrases" },
+    { pattern: /\b\d{12,18}\b/g, label: "long account-like numbers" },
+  ];
+
+  const redactedLabels = new Set<string>();
+  let redacted = text;
+  rules.forEach(({ pattern, label }) => {
+    redacted = redacted.replace(pattern, () => {
+      redactedLabels.add(label);
+      return `[REDACTED ${label.toUpperCase()}]`;
+    });
+  });
+
+  return {
+    text: redacted,
+    summary: redactedLabels.size > 0
+      ? `Redacted ${Array.from(redactedLabels).join(", ")} before sharing.`
+      : "No Aadhaar/PAN/OTP/account-like secrets detected by local redaction.",
+  };
+};
+
+const buildReviewPayload = (sourceText: string, result: AnalysisResponse): LocalReviewPayload => {
+  const selectedEvidence = result.evidence.length > 0
+    ? result.evidence.map((item) => item.text)
+    : result.whyExplanation;
+  const redacted = redactSensitiveText(sourceText);
+
+  return {
+    transcript: sourceText,
+    redactedTranscript: redacted.text,
+    selectedEvidence,
+    redactionSummary: redacted.summary,
+  };
+};
 
 export default function CheckPage() {
   const { t, language } = useTranslation();
@@ -35,9 +89,16 @@ export default function CheckPage() {
   const [activeTab, setActiveTab] = useState("text");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
+  const [localReviewPayload, setLocalReviewPayload] = useState<LocalReviewPayload | null>(null);
+  const [sharedScope, setSharedScope] = useState<PrivacyShareScope | "local_only" | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"not_shared" | "shared" | "local_only" | "offline">("not_shared");
   const [familyModalOpen, setFamilyModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [explainOpen, setExplainOpen] = useState(false);
+  const [scanId, setScanId] = useState(() => `PR-${Math.floor(100000 + Math.random() * 900000)}`);
+  const [liveListening, setLiveListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
   // Quick Demo texts to help judges evaluate the app easily
   const demoScenarios = {
@@ -52,6 +113,46 @@ export default function CheckPage() {
     setActiveTab("text");
   };
 
+  const handleToggleLiveMic = () => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      showToast("Live speech recognition is not available in this browser. Paste mode still stays private.");
+      return;
+    }
+
+    if (liveListening) {
+      recognitionRef.current?.stop();
+      setLiveListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = language === "hi" ? "hi-IN" : "en-IN";
+
+    recognition.onresult = (event: any) => {
+      let nextTranscript = "";
+      for (let i = 0; i < event.results.length; i += 1) {
+        nextTranscript += `${event.results[i][0].transcript} `;
+      }
+      setInputText(nextTranscript.trim());
+    };
+
+    recognition.onerror = () => {
+      setLiveListening(false);
+      showToast("Mic capture stopped. No audio was uploaded.");
+    };
+
+    recognition.onend = () => setLiveListening(false);
+    recognitionRef.current = recognition;
+    setActiveTab("live");
+    setLiveListening(true);
+    recognition.start();
+  };
+
   const handleAnalyze = async () => {
     let textToAnalyze = inputText;
     
@@ -63,70 +164,18 @@ export default function CheckPage() {
 
     setLoading(true);
     setResult(null);
+    setLocalReviewPayload(null);
+    setSharedScope(null);
+    setSyncStatus("not_shared");
 
     try {
       const analysisResult = await getAnalysisResult(textToAnalyze, selectedFile?.name);
-      
-      try {
-        // Connect to real FastAPI backend
-        const incident = await createIncident({
-          citizen_name: "Anonymous Citizen",
-          phone_number: "9999999999",
-          transcript: textToAnalyze,
-          location: "Online Portal"
-        });
-
-        const dbRiskLevel = analysisResult.risk === "critical" 
-          ? "HIGH" 
-          : analysisResult.risk === "suspicious" 
-            ? "MEDIUM" 
-            : "LOW";
-
-        const dbFraudType = analysisResult.risk === "critical" 
-          ? "Digital Arrest Scam" 
-          : analysisResult.risk === "suspicious" 
-            ? "Phishing Attempt" 
-            : "Clean / Low Risk";
-
-        // Update database incident classifications
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        await fetch(`${API_BASE}/api/incidents/${incident.incident_id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            status: "OPEN",
-            risk_level: dbRiskLevel,
-            fraud_type: dbFraudType
-          })
-        });
-
-        // Push audit logging to database
-        await createAuditLog({
-          incident_id: incident.incident_id,
-          action: "INCIDENT_ANALYZED",
-          rule_hits: analysisResult.risk === "critical" 
-            ? ["authority_impersonation", "coercion", "isolation_directive", "payment_threat"] 
-            : analysisResult.risk === "suspicious" 
-              ? ["confidentiality_claim", "verify_credentials"] 
-              : ["low_risk_indicators"],
-          model_version: "prahari-llm-v1.2",
-          prompt_version: "safety-coercion-v2.1",
-          score_components: {
-            coercion_score: analysisResult.score,
-            confidence_index: analysisResult.confidence
-          },
-          threshold_version: "cyber-arrest-v1.0"
-        });
-
-        console.log(`Incident and audit successfully synced with backend. ID: ${incident.incident_id}`);
-      } catch (apiError) {
-        console.warn("FastAPI backend is offline. Running in local standalone demo mode.", apiError);
-      }
-
       setResult(analysisResult);
+      setLocalReviewPayload(buildReviewPayload(textToAnalyze, analysisResult));
       
-      // Trigger canvas-confetti if the scan shows SAFE (bringing delightful feedback)
       if (analysisResult.risk === "safe") {
+        setSyncStatus("local_only");
+        setSharedScope("local_only");
         confetti({
           particleCount: 80,
           spread: 60,
@@ -141,10 +190,96 @@ export default function CheckPage() {
     }
   };
 
+  const handleShareEvidence = async (scope: PrivacyShareScope) => {
+    if (!result || !localReviewPayload || result.risk === "safe") return;
+
+    const transcriptToShare = scope === "selected_evidence"
+      ? localReviewPayload.selectedEvidence.join("\n")
+      : scope === "redacted_transcript"
+        ? localReviewPayload.redactedTranscript
+        : localReviewPayload.transcript;
+
+    setSharing(true);
+    try {
+      const incident = await createIncident({
+        citizen_name: "Anonymous Citizen",
+        phone_number: "Shared only if present in evidence",
+        transcript: transcriptToShare,
+        location: "Consent-based citizen report",
+        consent_status: "GRANTED",
+        consent_scope: scope,
+        local_only: false,
+        redaction_summary: scope === "full_transcript"
+          ? "User explicitly chose to share the full transcript."
+          : localReviewPayload.redactionSummary,
+      });
+
+      const dbRiskLevel = result.risk === "critical" ? "CRITICAL" : "MEDIUM";
+      const dbFraudType = result.risk === "critical" ? "Digital Arrest Scam" : "Suspicious Communication";
+
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      await fetch(`${API_BASE}/api/incidents/${incident.incident_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "OPEN",
+          risk_level: dbRiskLevel,
+          fraud_type: dbFraudType,
+          consent_status: "GRANTED",
+          consent_scope: scope,
+          local_only: false,
+          redaction_summary: scope === "full_transcript"
+            ? "User explicitly chose to share the full transcript."
+            : localReviewPayload.redactionSummary,
+        })
+      });
+
+      await createAuditLog({
+        incident_id: incident.incident_id,
+        action: "CONSENT_GRANTED_AND_INCIDENT_ANALYZED",
+        rule_hits: result.risk === "critical"
+          ? ["authority_impersonation", "coercion", "isolation_directive", "payment_threat"]
+          : ["confidentiality_claim", "verify_credentials"],
+        model_version: "local-private-rules-v1",
+        prompt_version: "no-llm-device-first",
+        score_components: {
+          coercion_score: result.score,
+          confidence_index: result.confidence,
+          privacy_mode: "device_first",
+          consent_scope: scope,
+          redaction_summary: scope === "full_transcript"
+            ? "User explicitly chose to share the full transcript."
+            : localReviewPayload.redactionSummary,
+        },
+        threshold_version: "privacy-first-v1.0"
+      });
+
+      setSharedScope(scope);
+      setSyncStatus("shared");
+      showToast("Shared with consent. Evidence is now available for complaint and graph intelligence.");
+    } catch (apiError) {
+      console.warn("FastAPI backend is offline. Risk result remains local.", apiError);
+      setSyncStatus("offline");
+      showToast("Backend is offline. Nothing left this browser.");
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleKeepPrivate = () => {
+    setSharedScope("local_only");
+    setSyncStatus("local_only");
+    showToast("Kept private. Nothing was sent to PRAHARI.");
+  };
+
   const handleReset = () => {
     setResult(null);
     setInputText("");
     setSelectedFile(null);
+    setLocalReviewPayload(null);
+    setSharedScope(null);
+    setSyncStatus("not_shared");
+    setScanId(`PR-${Math.floor(100000 + Math.random() * 900000)}`);
   };
 
   const showToast = (message: string) => {
@@ -198,6 +333,21 @@ export default function CheckPage() {
             <p className="text-sm text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
               {t("check.subtitle")}
             </p>
+            <div className="mx-auto mt-4 grid max-w-3xl grid-cols-1 gap-2 sm:grid-cols-3">
+              {[
+                "Private scan runs on this device",
+                "Safe results are never uploaded",
+                "Risky evidence shares only after consent",
+              ].map((item) => (
+                <div
+                  key={item}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-650 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+                >
+                  <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -237,8 +387,33 @@ export default function CheckPage() {
                 </button>
                 
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-widest bg-gray-100 dark:bg-zinc-900 px-3 py-1 rounded-full">
-                  Scan ID: PR-{Math.floor(100000 + Math.random() * 900000)}
+                  Scan ID: {scanId}
                 </span>
+              </div>
+
+              <div className={`rounded-2xl border p-4 text-left ${
+                syncStatus === "shared"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300"
+                  : "border-gray-200 bg-white text-gray-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+              }`}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-950 dark:text-white">
+                        {syncStatus === "shared" ? "Shared with consent" : "Private result"}
+                      </h3>
+                      <p className="mt-1 text-xs leading-relaxed text-gray-600 dark:text-zinc-400">
+                        {syncStatus === "shared"
+                          ? `Only the ${sharedScope?.replaceAll("_", " ")} package was sent after your approval.`
+                          : "This result was produced locally. Nothing leaves your device unless you choose a sharing option below."}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="rounded-full border border-current/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
+                    {syncStatus === "shared" ? "Network enabled" : "Local only"}
+                  </span>
+                </div>
               </div>
 
               {/* Critical Alert Banner */}
@@ -263,6 +438,75 @@ export default function CheckPage() {
                     <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 leading-relaxed">
                       This text shows indicators of unverified authorization checks or phishing. Refrain from transferring funds or typing OTP details.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {result.risk !== "safe" && localReviewPayload && syncStatus !== "shared" && (
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="max-w-2xl">
+                      <h3 className="flex items-center gap-2 text-base font-bold text-gray-950 dark:text-white">
+                        <Lock className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
+                        Review before sharing
+                      </h3>
+                      <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-zinc-400">
+                        PRAHARI can generate a complaint and check fraud-ring links only if you approve sharing. The safest option sends evidence spans and extracted risk signals, not the whole transcript.
+                      </p>
+                      <p className="mt-2 text-xs font-medium text-gray-500 dark:text-zinc-500">
+                        {localReviewPayload.redactionSummary}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:min-w-64">
+                      <button
+                        disabled={sharing}
+                        onClick={() => handleShareEvidence("selected_evidence")}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Send className="h-4 w-4" />
+                        Share selected evidence
+                      </button>
+                      <button
+                        disabled={sharing}
+                        onClick={() => handleShareEvidence("redacted_transcript")}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-250 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Share redacted transcript
+                      </button>
+                      <button
+                        disabled={sharing}
+                        onClick={handleKeepPrivate}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Keep private and delete
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-xl border border-gray-150 bg-gray-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-500">
+                        Selected evidence
+                      </h4>
+                      <ul className="mt-3 space-y-2 text-xs leading-relaxed text-gray-700 dark:text-zinc-300">
+                        {localReviewPayload.selectedEvidence.slice(0, 4).map((item) => (
+                          <li key={item} className="rounded-lg bg-white p-2 dark:bg-zinc-900">
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="rounded-xl border border-gray-150 bg-gray-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-500">
+                        Redacted preview
+                      </h4>
+                      <p className="mt-3 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-700 dark:text-zinc-300">
+                        {localReviewPayload.redactedTranscript}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -439,7 +683,7 @@ export default function CheckPage() {
                     setActiveTab(val);
                     setSelectedFile(null);
                   }} className="space-y-6">
-                    <TabsList className="grid grid-cols-2 md:grid-cols-4 bg-gray-100 dark:bg-zinc-950 p-1 rounded-xl gap-1">
+                    <TabsList className="grid grid-cols-2 md:grid-cols-5 bg-gray-100 dark:bg-zinc-950 p-1 rounded-xl gap-1">
                       <TabsTrigger
                         value="text"
                         className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
@@ -463,6 +707,12 @@ export default function CheckPage() {
                         className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
                       >
                         {t("check.tabs.transcript")}
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="live"
+                        className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
+                      >
+                        Live
                       </TabsTrigger>
                     </TabsList>
 
@@ -527,6 +777,41 @@ export default function CheckPage() {
                         onFileSelect={setSelectedFile}
                         selectedFile={selectedFile}
                       />
+                    </TabsContent>
+
+                    <TabsContent value="live" className="mt-0">
+                      <div className="rounded-xl border border-gray-250 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
+                              <Mic className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                              Private live call check
+                            </h3>
+                            <p className="mt-1 text-xs leading-relaxed text-gray-600 dark:text-zinc-400">
+                              Uses this browser's speech recognition. Audio is not uploaded; PRAHARI only scans the live text on this device.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleToggleLiveMic}
+                            className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                              liveListening
+                                ? "bg-red-600 text-white hover:bg-red-700"
+                                : "bg-indigo-600 text-white hover:bg-indigo-700"
+                            }`}
+                          >
+                            {liveListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                            {liveListening ? "Stop listening" : "Start live scan"}
+                          </button>
+                        </div>
+                        <textarea
+                          value={inputText}
+                          onChange={(e) => setInputText(e.target.value)}
+                          placeholder="Live transcript appears here while the call is on speaker..."
+                          rows={6}
+                          className="mt-4 w-full resize-none rounded-xl border border-gray-250 bg-gray-50 p-4 text-sm font-medium leading-relaxed text-gray-800 placeholder-gray-500 focus:border-indigo-500/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-gray-200 dark:placeholder-zinc-500"
+                        />
+                      </div>
                     </TabsContent>
                   </Tabs>
 

@@ -108,7 +108,7 @@ def write_ring_ids(driver, components):
         nodes = comp["nodes"]
         query = """
         UNWIND $nodes AS nodeId
-        MATCH (n) WHERE elementId(n) = nodeId AND n:Report
+        MATCH (n) WHERE id(n) = nodeId AND n:Report
         SET n.ring_id = $ring_id
         RETURN count(*) AS updated
         """
@@ -125,7 +125,7 @@ def run_degree_centrality(driver):
     CALL gds.degree.stream('fraud-rings')
     YIELD nodeId, score
     WITH nodeId, score
-    MATCH (n) WHERE elementId(n) = nodeId
+    MATCH (n) WHERE id(n) = nodeId
     SET n.hub_rank = score
     RETURN count(*) AS updated
     """
