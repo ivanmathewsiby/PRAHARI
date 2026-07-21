@@ -23,8 +23,8 @@ Full-transcript analysis. Accepts the entire transcript in a single request, run
 {
   "incident_id": "a1b2c3d4",
   "persisted": true,
-  "graph_synced": false,
-  "ring_id": null,
+  "graph_synced": true,
+  "ring_id": "RING-0",
   "risk_label": "CRITICAL",
   "risk_level": "HIGH",
   "risk_score": 100,
@@ -32,7 +32,7 @@ Full-transcript analysis. Accepts the entire transcript in a single request, run
   "mode": "offline_safety_analysis",
   "rules_fired": ["Authority", "Drain"],
   "matches": { "Authority": ["CBI"], "Drain": ["safe account"] },
-  "phases_detected": [],
+  "phases_detected": ["Authority", "Drain"],
   "evidence_spans": ["CBI", "safe account"],
   "entities": { "phone_numbers": [], "upi_ids": [], "bank_accounts": [], "amount_inr": null },
   "plain_language_reason": "...",
@@ -118,8 +118,8 @@ Send a transcript chunk for progressive analysis.
 {
   "session_id": "bb768caf-...",
   "mode": "offline_safety_analysis",
-  "phases_detected": [],
-  "highest_phase": 0,
+  "phases_detected": ["Hook", "Authority", "Fabricated Evidence", "Isolation", "Drain"],
+  "highest_phase": 5,
   "risk_label": "CRITICAL",
   "risk_score": 100,
   "rules_fired": ["Authority", "Isolation", "Drain", "Fabricated Evidence", "Hook"],
@@ -130,8 +130,8 @@ Send a transcript chunk for progressive analysis.
   "is_complete": true,
   "incident_id": "72e1d6ab",
   "persisted": true,
-  "graph_synced": false,
-  "ring_id": null,
+  "graph_synced": true,
+  "ring_id": "RING-0",
   "recommended_action": "IMMEDIATE Escalation: ...",
   "matches": { "Authority": ["CBI"], "Drain": ["safe account"] },
   "plain_language_reason": "...",
@@ -179,13 +179,14 @@ No implicit session creation — clients must call `POST /api/analyze/session/st
 
 ---
 
-## Reserved Fields
+## Graph Integration
 
-`graph_synced` and `ring_id` in final chunk responses are fixed placeholders:
-- `graph_synced`: always `false`
-- `ring_id`: always `null`
+For a non-SAFE final chunk, the consented incident and audit record are persisted and the report is ingested into Neo4j. The response returns:
 
-These are reserved for future Neo4j graph integration and carry no meaning yet.
+- `graph_synced`: whether Neo4j ingestion completed successfully.
+- `ring_id`: the existing seeded or discovered ring joined through a reused caller number, UPI ID, or bank account; otherwise `null`.
+
+For telephony sessions, `caller_phone_number` is the suspicious graph identifier. The citizen's own `phone_number` is never used to connect fraud reports.
 
 ---
 
