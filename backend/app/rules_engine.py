@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 from app.scam_phases import AUTHORITY, DRAIN, FABRICATED_EVIDENCE, HOOK, ISOLATION
+from app.trend_weights import TREND_MULTIPLIERS, get_effective_weight
 
 AUTHORITY_PATTERNS = [
     r"\bCBI\b",
@@ -146,15 +147,15 @@ def check_rules(transcript: str) -> dict:
 
     score = 0
     if authority_hit:
-        score += 15
+        score += get_effective_weight(15, AUTHORITY)
     if isolation_hit:
-        score += 15
+        score += get_effective_weight(15, ISOLATION)
     if payment_hit:
-        score += 15
+        score += get_effective_weight(15, DRAIN)
     if legal_hit:
-        score += 15
+        score += get_effective_weight(15, FABRICATED_EVIDENCE)
     if urgency_hit:
-        score += 10
+        score += get_effective_weight(10, HOOK)
 
     combos = sum([
         authority_hit and isolation_hit and payment_hit,
@@ -188,6 +189,8 @@ def check_rules(transcript: str) -> dict:
         "rules_fired": rules_fired,
         "matches": matches,
         "recommended_risk": recommended_risk,
+        "trend_weighting_applied": any(v != 1.0 for v in TREND_MULTIPLIERS.values()),
+        "applied_multipliers": dict(TREND_MULTIPLIERS),
     }
 
 

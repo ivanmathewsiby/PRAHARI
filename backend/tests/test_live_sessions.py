@@ -158,7 +158,7 @@ def test_scam_escalation_3_chunks():
     check(steps[0]["highest_phase"] == 2, "Chunk 1 highest_phase is 2 (Authority)")
     check(steps[0]["mode"] == "offline_safety_analysis", "Chunk 1 mode is offline_safety_analysis")
     check(steps[0]["has_new_signal"], "Chunk 1 has_new_signal (first chunk)")
-    check(steps[0]["risk_score"] == 15, "Chunk 1 score is 15 (authority)")
+    check(steps[0]["risk_score"] == 16, "Chunk 1 score is 16 (authority × 1.08)")
 
     # Step 2 – authority + fabricated evidence
     check(steps[1]["risk_label"] == "SUSPICIOUS", "Chunk 2 risk_label escalates to SUSPICIOUS")
@@ -236,7 +236,7 @@ def test_hard_negative_3_chunks():
     # Hard negatives may fire Authority + Drain (RBI + UPI), but must stay SAFE
     check("Authority" in steps[0]["rules_fired"], "Chunk 1 fires Authority (RBI mention)")
     check("Drain" in steps[0]["rules_fired"], "Chunk 1 fires Drain (UPI mention)")
-    check(steps[0]["risk_score"] == 35, "Chunk 1 score is 35 (authority+drain+2cat bonus)")
+    check(steps[0]["risk_score"] == 38, "Chunk 1 score is 38 (authority×1.08 + drain×1.12 + 2cat bonus)")
     check(not any(s["risk_label"] in ("SUSPICIOUS", "CRITICAL") for s in steps),
           "No chunk ever becomes SUSPICIOUS or CRITICAL")
 
@@ -251,23 +251,23 @@ def test_delta_detection():
     # First call with no previous → always True
     d1 = check_rules_delta(None, "Hello from CBI.")
     check(d1["has_new_signal"], "First call with None previous → has_new_signal=True")
-    check(d1["rule_result"]["score"] == 15, "Score 15 (Authority)")
+    check(d1["rule_result"]["score"] == 16, "Score 16 (Authority × 1.08)")
 
     # Same text again → no change → False
     d2 = check_rules_delta(d1["rule_result"], "Hello from CBI.")
     check(not d2["has_new_signal"], "Same text again → has_new_signal=False")
-    check(d2["rule_result"]["score"] == 15, "Score still 15")
+    check(d2["rule_result"]["score"] == 16, "Score still 16")
 
     # New text with additional rule → True
     d3 = check_rules_delta(d2["rule_result"], "Hello from CBI. Transfer money to safe account.")
     check(d3["has_new_signal"], "New text with Drain → has_new_signal=True")
     check("Drain" in d3["rule_result"]["rules_fired"], "Drain rule fires")
-    check(d3["rule_result"]["score"] == 35, "Score 35 (Authority + Drain + 2cat bonus)")
+    check(d3["rule_result"]["score"] == 38, "Score 38 (Authority×1.08 + Drain×1.12 + 2cat bonus)")
 
     # Same text again → no change → False
     d4 = check_rules_delta(d3["rule_result"], "Hello from CBI. Transfer money to safe account.")
     check(not d4["has_new_signal"], "Same expanded text → has_new_signal=False")
-    check(d4["rule_result"]["score"] == 35, "Score still 35")
+    check(d4["rule_result"]["score"] == 38, "Score still 38")
 
     # Degrading text: fewer rules fired → still has_new_signal (different rules_fired)
     d5 = check_rules_delta(d4["rule_result"], "Hello, this is a normal call.")
@@ -287,7 +287,7 @@ def test_risk_score_non_decreasing():
     scores = [s["risk_score"] for s in steps]
     non_decreasing = all(scores[i] <= scores[i + 1] for i in range(len(scores) - 1))
     check(non_decreasing, "Risk score never decreases across scam chunks")
-    check(scores == [15, 55, 100], f"Expected scores [15, 55, 100], got {scores}")
+    check(scores == [16, 57, 100], f"Expected scores [16, 57, 100], got {scores}")
 
     print(f"\n{'='*70}\n")
 
@@ -307,7 +307,7 @@ def test_session_not_found_equivalent():
     # Simulate expiry → start over with None
     fresh = check_rules_delta(None, "This is CBI.")
     check(fresh["has_new_signal"], "Expired session equivalent: fresh call has_new_signal=True")
-    check(fresh["rule_result"]["score"] == 15, "Expired session equivalent: score 15")
+    check(fresh["rule_result"]["score"] == 16, "Expired session equivalent: score 16 (Authority × 1.08)")
 
     print(f"\n{'='*70}\n")
 

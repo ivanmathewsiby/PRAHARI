@@ -56,6 +56,13 @@ python tests/benchmark_120.py
 
 ---
 
+## Session Lifecycle
+
+1. **Start** — `POST /api/analyze/session/start` allocates an in-memory session, returns `session_id`.
+2. **Accumulate** — Send chunks with `is_final=false`. Each chunk runs rules on the full transcript so far. LLM is **not** called on intermediates.
+3. **Finalise** — Send last chunk with `is_final=true`. Runs rules + optional LLM + fusion, persists incident/audit to PostgreSQL if not SAFE, then evicts the session.
+4. **Recover** — If the session expires (30 min idle) or the server restarts, the client gets a `404` and must call `/start` again.
+
 ## Client Integration Checklist
 
 - [ ] Call `POST /api/analyze/session/start` to begin a live analysis session.

@@ -1,5 +1,15 @@
 # PRAHARI API
 
+## Endpoint Reference
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/analyze` | Full-transcript analysis (single request) |
+| `POST` | `/api/analyze/session/start` | Create a new incremental session |
+| `POST` | `/api/analyze/session/{session_id}/chunk` | Send a transcript chunk |
+
+---
+
 ## Existing Endpoints
 
 ### `POST /api/analyze`

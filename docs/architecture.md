@@ -94,3 +94,47 @@ Session state lives in a process-local dict. Only one backend worker is supporte
 | Phase bonus (LLM highest_phase × 8, cap 30) | +8 per level |
 
 All thresholds live in `app/rules_engine.py` and `app/rules_fusion.py`.
+
+---
+
+## Trend-Informed Rule Weights
+
+The deterministic engine supports a lightweight configuration layer for adjusting
+rule-family base scores based on general awareness of publicly reported cybercrime
+trends (NCRB/NCRP, not a live data feed).
+
+**How it works:**
+
+1. Base scores remain unchanged as defaults (15 / 10 per category).
+2. `app/trend_weights.py` defines a `TREND_MULTIPLIERS` dict mapping each
+   rule family to a small multiplier (range 1.00–1.20).
+3. `get_effective_weight(base, category)` applies the multiplier and rounds:
+   `effective = round(base × multiplier)`.
+4. `check_rules()` uses `get_effective_weight` for each category's score
+   contribution. Combo bonuses and category-count bonuses are unaffected.
+
+**Current multipliers (conservative, not exact statistics):**
+
+| Rule Family | Base | Multiplier | Effective |
+|-------------|------|------------|-----------|
+| Authority impersonation | 15 | 1.08 | 16 |
+| Fabricated legal language | 15 | 1.10 | 16 |
+| Payment request / Drain | 15 | 1.12 | 17 |
+| Isolation language | 15 | 1.04 | 16 |
+| Urgency / Hook | 10 | 1.06 | 11 |
+
+**Design constraints:**
+
+- Multipliers are **optional** and fully transparent — the mapping is a plain dict.
+- The `check_rules` result includes `trend_weighting_applied` and
+  `applied_multipliers` fields for observability.
+- No real-time adaptation, no external API dependency, no scraping.
+- The existing scoring structure (combo bonuses, category count bonuses,
+  risk thresholds) is preserved exactly.
+
+**To disable trend weighting,** set all multipliers to 1.00 in
+`app/trend_weights.py`. Tests expect specific effective scores; see
+`tests/test_trend_weights.py` for before/after examples.
+
+Future work: Calibrate multipliers against larger evaluation datasets. The
+current values are a safe starting point for hackathon demonstration.
