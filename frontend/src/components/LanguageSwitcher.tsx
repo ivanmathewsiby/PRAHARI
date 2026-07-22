@@ -52,7 +52,7 @@ export const LanguageSwitcher: React.FC = () => {
       {isOpen && (
         <div className="absolute right-0 mt-1.5 w-40 rounded-xl border border-gray-150 dark:border-zinc-850 bg-white dark:bg-zinc-950 shadow-lg ring-1 ring-black/5 focus:outline-none z-50 overflow-hidden divide-y divide-gray-50 dark:divide-zinc-900 animate-in fade-in-50 slide-in-from-top-1 duration-150">
           <div className="py-1">
-            {(["en", "hi"] as Language[]).map((lang) => (
+            {(["en", "hi", "ml", "ta", "te", "kn", "mr"] as Language[]).map((lang) => (
               <button
                 key={lang}
                 onClick={() => handleSelectLanguage(lang)}

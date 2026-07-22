@@ -9,7 +9,7 @@ PRAHARI is a hackathon prototype for digital-arrest scam interception and fraud-
 - FastAPI backend with health, incident, audit, dashboard, and ring APIs.
 - PostgreSQL schema and Alembic migration for incidents and audit logs.
 - Neo4j schema, ingestion pipeline, ring detection, hub ranking, and evidence-package JSON.
-- Next.js citizen UI at `/check` with Mit's deterministic engine, browser-local Whisper transcription, consent review, redaction, and visible privacy telemetry.
+- Next.js citizen UI at `/check` with Mit's deterministic engine, instant English browser speech, offline multilingual Whisper, consent review, redaction, and visible privacy telemetry.
 - Officer command UI at `/command` with incident queue and fraud-ring panel.
 - Demo seed script that plants three reusable fraud rings.
 - Offline frontend demo fallback if the backend is not running.
@@ -52,7 +52,10 @@ Officer /command dashboard + evidence package
 PRAHARI is device-first by default:
 
 - Pasted text and text-file contents are scanned locally in the browser.
-- Live mic audio is transcribed in a Web Worker with Whisper using WebGPU when available and WebAssembly otherwise. The model may download once, but microphone audio is not sent to the transcription server.
+- Instant English mode uses the browser's speech-recognition service. It requires no PRAHARI model download, but the browser vendor may process microphone audio online; the privacy bar states this explicitly.
+- Strict-private Hindi, Hinglish, and English mode transcribes in a Web Worker with Whisper using WebGPU when available and WebAssembly otherwise. The model may download once, but microphone audio is not sent to a transcription server.
+- The NCRP handoff copies a locally extracted suspect identifier and opens the official suspect-repository search. Identifiers are never placed in the destination URL.
+- Speech capture lists all 22 scheduled Indian languages plus English. Browser mode requests each language's Indian BCP 47 locale. Offline Whisper uses explicit language tokens where the stock model provides them and clearly marks the remaining low-resource languages as best-effort auto-detection.
 - SAFE results are not sent to the backend.
 - SUSPICIOUS and CRITICAL results show a review screen before sharing.
 - The recommended share option sends selected evidence spans, not the full transcript.
@@ -64,24 +67,28 @@ PRAHARI is device-first by default:
 ## Quick Start
 
 1. Copy `backend/.env.example` to `backend/.env` if needed.
-2. Start services:
+2. From Git Bash, WSL, Linux, or macOS, run the seeded demo setup:
 
 ```bash
+bash scripts/demo_seed.sh
+```
+
+This starts the services, applies migrations, seeds three planted fraud rings, ingests the graph, and runs ring detection. If Bash is unavailable, run the equivalent Docker steps:
+
+```powershell
 docker compose up -d --build
+docker compose exec backend alembic upgrade head
+docker compose exec backend python seed.py
 ```
 
-3. Seed the demo:
-
-```bash
-./scripts/demo_seed.sh
-```
-
-4. Open:
+3. Open:
 
 - Citizen check: `http://localhost:3000/check`
 - Officer command: `http://localhost:3000/command`
 - Backend docs: `http://localhost:8000/docs`
 - Neo4j browser: `http://localhost:7474` (`neo4j` / `prahari123`)
+
+For the fastest judge walkthrough, open `/check`, select **Protect me during a call**, and click **Run live demo**. PRAHARI shows progressive scam phases and interrupts before the synthetic caller reaches the payment demand.
 
 ## Useful Checks
 
@@ -92,6 +99,11 @@ python graph/detect_rings.py
 python scripts/loadtest.py --url http://localhost:8000 --requests 100 --concurrency 20
 python scripts/generate_pdf.py --ring-id RING-demo
 ```
+
+## Project Report
+
+- Editable report: [`docs/PRAHARI_Project_Report.docx`](docs/PRAHARI_Project_Report.docx)
+- Submission PDF: [`output/pdf/PRAHARI_Project_Report.pdf`](output/pdf/PRAHARI_Project_Report.pdf)
 
 ## Known Limits
 

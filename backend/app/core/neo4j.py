@@ -33,8 +33,9 @@ def run_write_query(query, params=None):
     driver = get_neo4j_driver()
     with driver.session() as session:
         result = session.run(query, params or {})
+        records = [record.data() for record in result]
         session.last_bookmarks()
-        return [record.data() for record in result]
+        return records
 
 
 def apply_schema():

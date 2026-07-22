@@ -6,7 +6,7 @@ env.useBrowserCache = true;
 
 type WorkerRequest =
   | { type: "load" }
-  | { type: "transcribe"; audio: Float32Array };
+  | { type: "transcribe"; audio: Float32Array; language?: string; stream?: boolean };
 
 type Transcriber = (
   audio: Float32Array,
@@ -68,14 +68,17 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     }
 
     const transcriber = await getTranscriber();
-    post({ type: "transcribing", device: activeDevice });
-    const output = await transcriber(event.data.audio, {
+    const stream = Boolean(event.data.stream);
+    post({ type: "transcribing", device: activeDevice, stream });
+    const options: Record<string, unknown> = {
       chunk_length_s: 30,
       stride_length_s: 5,
       task: "transcribe",
-    });
+    };
+    if (event.data.language) options.language = event.data.language;
+    const output = await transcriber(event.data.audio, options);
     const text = typeof output === "string" ? output : output.text || "";
-    post({ type: "result", text: text.trim(), device: activeDevice });
+    post({ type: "result", text: text.trim(), device: activeDevice, stream });
   } catch (error) {
     transcriberPromise = null;
     post({
@@ -84,4 +87,3 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     });
   }
 };
-

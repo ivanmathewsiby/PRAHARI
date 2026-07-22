@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useTranslation } from "../../context/LanguageContext";
@@ -16,7 +16,7 @@ import { AlertBanner } from "../../components/AlertBanner";
 import { FamilyShieldModal } from "../../components/FamilyShieldModal";
 import { ComplaintPreview } from "../../components/ComplaintPreview";
 import { RecommendationCard } from "../../components/RecommendationCard";
-import { LocalWhisperCapture } from "../../components/LocalWhisperCapture";
+import { LocalWhisperCapture, type SpeechPrivacyStatus } from "../../components/LocalWhisperCapture";
 import { ConsentReceipt, PrivacyProofBar, type ConsentReceiptData } from "../../components/PrivacyProof";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import {
@@ -26,11 +26,15 @@ import {
   Info,
   Layers,
   Sparkles,
-  ClipboardList,
   ChevronDown,
+  FileUp,
   Lock,
+  MessageSquareText,
+  Mic,
+  PlayCircle,
   Send,
   ShieldCheck,
+  SearchCheck,
   Trash2,
 } from "lucide-react";
 
@@ -42,6 +46,14 @@ interface LocalReviewPayload {
   selectedEvidence: string[];
   redactionSummary: string;
 }
+
+const LIVE_PHASES = [
+  { key: "Hook", label: "Scam story" },
+  { key: "Authority", label: "Fake authority" },
+  { key: "Fabricated Evidence", label: "Fake proof" },
+  { key: "Isolation", label: "Isolation" },
+  { key: "Drain", label: "Payment" },
+];
 
 const redactSensitiveText = (text: string) => {
   const rules = [
@@ -87,7 +99,7 @@ export default function CheckPage() {
   const { t, language } = useTranslation();
   const [inputText, setInputText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [activeTab, setActiveTab] = useState("text");
+  const [activeTab, setActiveTab] = useState("live");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [localReviewPayload, setLocalReviewPayload] = useState<LocalReviewPayload | null>(null);
@@ -103,7 +115,18 @@ export default function CheckPage() {
   const [evidenceBytes, setEvidenceBytes] = useState(0);
   const [retentionDays, setRetentionDays] = useState<1 | 7 | 30>(7);
   const [consentReceipt, setConsentReceipt] = useState<ConsentReceiptData | null>(null);
-  const [whisperPrivacy, setWhisperPrivacy] = useState({ modelState: "not loaded", audioStored: false });
+  const [whisperPrivacy, setWhisperPrivacy] = useState<SpeechPrivacyStatus>({
+    modelState: "Browser speech recognition (English)",
+    audioStored: false,
+    analysisLocation: "Browser service",
+    speechMayLeaveDevice: true,
+    captureState: "ready",
+  });
+  const [liveResult, setLiveResult] = useState<AnalysisResponse | null>(null);
+  const [liveChecking, setLiveChecking] = useState(false);
+  const [liveDemoRunning, setLiveDemoRunning] = useState(false);
+  const liveAnalysisVersionRef = useRef(0);
+  const liveDemoTimersRef = useRef<number[]>([]);
 
   // Quick Demo texts to help judges evaluate the app easily
   const demoScenarios = {
@@ -112,8 +135,71 @@ export default function CheckPage() {
     safe: "Hi dad, I reached the hostel safely. The train was on time. I'll call you in the evening when I get free. Please send me the notes we left on the table if you find them. Love you!",
   };
 
+  useEffect(() => {
+    if (activeTab !== "live" || result || inputText.trim().length < 8) return;
+
+    const version = ++liveAnalysisVersionRef.current;
+    const timeout = window.setTimeout(async () => {
+      setLiveChecking(true);
+      const text = inputText.trim();
+      const analysis = await analyzeLocally(text);
+      if (version !== liveAnalysisVersionRef.current) return;
+
+      setLiveResult(analysis);
+      setLiveChecking(false);
+      if (analysis.risk === "critical") {
+        liveDemoTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+        liveDemoTimersRef.current = [];
+        setLiveDemoRunning(false);
+        setResult(analysis);
+        setLocalReviewPayload(buildReviewPayload(text, analysis));
+        setSyncStatus("not_shared");
+      }
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timeout);
+      liveAnalysisVersionRef.current += 1;
+    };
+  }, [activeTab, inputText, result]);
+
+  useEffect(() => () => {
+    liveDemoTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  const stopLiveDemo = () => {
+    liveDemoTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    liveDemoTimersRef.current = [];
+    setLiveDemoRunning(false);
+  };
+
+  const handleRunLiveDemo = () => {
+    stopLiveDemo();
+    setActiveTab("live");
+    setInputText("");
+    setLiveResult(null);
+    setLiveDemoRunning(true);
+
+    const segments = [
+      "This is CBI officer Sharma.",
+      "A narcotics parcel was booked using your Aadhaar.",
+      "You are under digital arrest and must stay on this call.",
+      "Do not tell your family and do not disconnect.",
+      "Transfer Rs.85,000 to cbi.verify@upi immediately.",
+    ];
+    segments.forEach((segment, index) => {
+      const timer = window.setTimeout(() => {
+        setInputText((current) => [current.trim(), segment].filter(Boolean).join(" "));
+        if (index === segments.length - 1) setLiveDemoRunning(false);
+      }, index * 1_300);
+      liveDemoTimersRef.current.push(timer);
+    });
+  };
+
   const handleDemoLoad = (type: "critical" | "suspicious" | "safe") => {
+    stopLiveDemo();
     setInputText(demoScenarios[type]);
+    setLiveResult(null);
     setSelectedFile(null);
     setActiveTab("text");
   };
@@ -133,6 +219,7 @@ export default function CheckPage() {
     if (!textToAnalyze && !selectedFile) return;
 
     setLoading(true);
+    setLiveResult(null);
     setResult(null);
     setLocalReviewPayload(null);
     setSharedScope(null);
@@ -260,6 +347,7 @@ export default function CheckPage() {
   };
 
   const handleReset = () => {
+    stopLiveDemo();
     setResult(null);
     setInputText("");
     setSelectedFile(null);
@@ -270,6 +358,8 @@ export default function CheckPage() {
     setSyncStatus("not_shared");
     setEvidenceBytes(0);
     setConsentReceipt(null);
+    setLiveResult(null);
+    setLiveChecking(false);
     setScanId(`PR-${Math.floor(100000 + Math.random() * 900000)}`);
   };
 
@@ -320,8 +410,52 @@ export default function CheckPage() {
     showToast("1930-ready evidence packet downloaded. It has not been submitted automatically.");
   };
 
+  const handleCheckNcrp = () => {
+    const source = inputText || localReviewPayload?.transcript || "";
+    const patterns = [
+      /\b[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}\b/,
+      /(?:\+91[\s-]?)?[6-9]\d{9}\b/,
+      /\b\d{9,18}\b/,
+    ];
+    const identifier = patterns.map((pattern) => source.match(pattern)?.[0]).find(Boolean);
+
+    window.open(
+      "https://cybercrime.gov.in/Webform/suspect_search_repository.aspx",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    if (!identifier) {
+      showToast("NCRP opened. Paste a suspect mobile number, email, account number, URL, or other identifier there.");
+      return;
+    }
+
+    const copyIdentifier = async () => {
+      try {
+        await navigator.clipboard.writeText(identifier);
+        return true;
+      } catch {
+        const input = document.createElement("textarea");
+        input.value = identifier;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        const copied = document.execCommand("copy");
+        input.remove();
+        return copied;
+      }
+    };
+
+    void copyIdentifier().then((copied) => {
+      showToast(copied
+        ? `NCRP opened and ${identifier} was copied. Paste it into the official search field.`
+        : "NCRP opened. Copy the suspect identifier from the evidence and paste it into the search field.");
+    });
+  };
+
   return (
-    <div className="relative flex-grow py-12 px-4 sm:px-6 lg:px-8 bg-gray-50/20 dark:bg-zinc-950 transition-colors duration-200">
+    <div className="relative flex-grow px-4 py-8 sm:px-6 sm:py-10 lg:px-8 bg-gray-50/20 dark:bg-zinc-950 transition-colors duration-200">
 
       {/* Background Mesh */}
       <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:24px_24px] dark:bg-[radial-gradient(#1f1f23_1px,transparent_1px)] opacity-50 dark:opacity-30 pointer-events-none z-0" />
@@ -345,28 +479,16 @@ export default function CheckPage() {
 
         {/* Page Titles */}
         {!result && !loading && (
-          <div className="text-center space-y-2">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-              {t("check.title")}
+          <div className="text-center space-y-3">
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-white">
+              Is this call or message a scam?
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
-              {t("check.subtitle")}
+            <p className="text-base text-gray-600 dark:text-gray-300 max-w-xl mx-auto leading-relaxed">
+              Choose the easiest way to check. You do not need to create an account.
             </p>
-            <div className="mx-auto mt-4 grid max-w-3xl grid-cols-1 gap-2 sm:grid-cols-3">
-              {[
-                "Private scan runs on this device",
-                "Safe results are never uploaded",
-                "Risky evidence shares only after consent",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-650 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
-                >
-                  <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  {item}
-                </div>
-              ))}
-            </div>
+            <p className="mx-auto flex w-fit items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+              <Lock className="h-4 w-4" /> Nothing is shared without your permission
+            </p>
           </div>
         )}
 
@@ -402,18 +524,18 @@ export default function CheckPage() {
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-900 transition-colors"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  New Verification Scan
+                  Check another call or message
                 </button>
 
-                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest bg-gray-100 dark:bg-zinc-900 px-3 py-1 rounded-full">
-                  Scan ID: {scanId}
-                </span>
+                <details className="text-right text-xs text-gray-500"><summary className="cursor-pointer font-semibold">Reference number</summary><p className="mt-1">{scanId}</p></details>
               </div>
 
               <PrivacyProofBar
                 evidenceBytes={evidenceBytes}
                 modelStatus={whisperPrivacy.modelState}
                 audioInMemory={whisperPrivacy.audioStored}
+                analysisLocation={whisperPrivacy.analysisLocation}
+                speechMayLeaveDevice={whisperPrivacy.speechMayLeaveDevice}
               />
 
               <div className={`rounded-2xl border p-4 text-left ${
@@ -426,12 +548,12 @@ export default function CheckPage() {
                     <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                     <div>
                       <h3 className="text-sm font-bold text-gray-950 dark:text-white">
-                        {syncStatus === "shared" ? "Shared with consent" : "Private result"}
+                        {syncStatus === "shared" ? "Shared with your permission" : "This result is private"}
                       </h3>
                       <p className="mt-1 text-xs leading-relaxed text-gray-600 dark:text-zinc-400">
                         {syncStatus === "shared"
                           ? `Only the ${sharedScope?.replaceAll("_", " ")} package was sent after your approval.${sharedRingId ? ` It joined ${sharedRingId}.` : ""}`
-                          : "Mit's deterministic safety engine produced this result locally. Nothing leaves your device unless you choose a sharing option below."}
+                          : "The check happened on this device. You decide whether anything is shared."}
                       </p>
                     </div>
                   </div>
@@ -447,7 +569,7 @@ export default function CheckPage() {
                     </button>
                   ) : (
                     <span className="rounded-full border border-current/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
-                      Local only
+                      Not shared
                     </span>
                   )}
                 </div>
@@ -461,6 +583,7 @@ export default function CheckPage() {
                   onCopyComplaint={handleCopyComplaint}
                   onReturnHome={handleReset}
                   onDownloadEvidence={handleDownloadEvidencePacket}
+                  onCheckNcrp={handleCheckNcrp}
                   complaintGenerated={true}
                 />
               )}
@@ -471,11 +594,19 @@ export default function CheckPage() {
                   <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
                   <div>
                     <h4 className="text-sm font-bold text-amber-900 dark:text-amber-400">
-                      Suspicious Communication Pattern Identified
+                      Be careful. This may be a scam.
                     </h4>
                     <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 leading-relaxed">
-                      This text shows indicators of unverified authorization checks or phishing. Refrain from transferring funds or typing OTP details.
+                      Do not send money, share an OTP, or follow links until you verify the caller independently.
                     </p>
+                    <button
+                      type="button"
+                      onClick={handleCheckNcrp}
+                      className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                    >
+                      <SearchCheck className="h-3.5 w-3.5" />
+                      Check number on official NCRP
+                    </button>
                   </div>
                 </div>
               )}
@@ -483,15 +614,18 @@ export default function CheckPage() {
               {consentReceipt && <ConsentReceipt receipt={consentReceipt} />}
 
               {result.risk !== "safe" && localReviewPayload && syncStatus !== "shared" && (
-                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <details className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <summary className="cursor-pointer text-base font-bold text-gray-950 dark:text-white">
+                    Help warn other people (optional)
+                  </summary>
+                  <div className="mt-5 flex flex-col gap-4 border-t border-gray-100 pt-5 dark:border-zinc-800 lg:flex-row lg:items-start lg:justify-between">
                     <div className="max-w-2xl">
                       <h3 className="flex items-center gap-2 text-base font-bold text-gray-950 dark:text-white">
                         <Lock className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
-                        Review before sharing
+                        Choose what to share
                       </h3>
                       <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-zinc-400">
-                        PRAHARI can generate a complaint and check fraud-ring links only if you approve sharing. The safest option sends evidence spans and extracted risk signals, not the whole transcript.
+                        You can share only the warning signs from this conversation. Your full conversation stays private unless you choose otherwise.
                       </p>
                       <p className="mt-2 text-xs font-medium text-gray-500 dark:text-zinc-500">
                         {localReviewPayload.redactionSummary}
@@ -500,7 +634,7 @@ export default function CheckPage() {
 
                     <div className="flex flex-col gap-2 sm:min-w-64">
                       <label className="text-xs font-semibold text-gray-600 dark:text-zinc-400">
-                        Automatic deletion
+                        Delete shared information after
                         <select
                           value={retentionDays}
                           onChange={(event) => setRetentionDays(Number(event.target.value) as 1 | 7 | 30)}
@@ -517,7 +651,7 @@ export default function CheckPage() {
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Send className="h-4 w-4" />
-                        Share selected evidence
+                        Share warning signs only
                       </button>
                       <button
                         disabled={sharing}
@@ -525,7 +659,7 @@ export default function CheckPage() {
                         className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-250 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
                       >
                         <ShieldCheck className="h-4 w-4" />
-                        Share redacted transcript
+                        Share message with private details hidden
                       </button>
                       <button
                         disabled={sharing}
@@ -533,15 +667,17 @@ export default function CheckPage() {
                         className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
                       >
                         <Trash2 className="h-4 w-4" />
-                        Keep private and delete
+                        Do not share anything
                       </button>
                     </div>
                   </div>
 
-                  <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                  <details className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                    <summary className="cursor-pointer text-sm font-bold text-gray-700 dark:text-zinc-300">Preview exactly what can be shared</summary>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
                     <div className="rounded-xl border border-gray-150 bg-gray-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-500">
-                        Selected evidence
+                        Warning signs
                       </h4>
                       <ul className="mt-3 space-y-2 text-xs leading-relaxed text-gray-700 dark:text-zinc-300">
                         {localReviewPayload.selectedEvidence.slice(0, 4).map((item) => (
@@ -553,14 +689,15 @@ export default function CheckPage() {
                     </div>
                     <div className="rounded-xl border border-gray-150 bg-gray-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-500">
-                        Redacted preview
+                        Message with private details hidden
                       </h4>
                       <p className="mt-3 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-700 dark:text-zinc-300">
                         {localReviewPayload.redactedTranscript}
                       </p>
                     </div>
                   </div>
-                </div>
+                  </details>
+                </details>
               )}
 
               {/* Core Layout Grid */}
@@ -577,7 +714,7 @@ export default function CheckPage() {
                   {/* Recommendations */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest pl-1">
-                      {t("results.recommendations")}
+                      What you should do now
                     </h4>
                     <div className="space-y-3">
                       {(language === "hi" ? result.recommendations_hi : result.recommendations).map((rec, idx) => (
@@ -604,7 +741,7 @@ export default function CheckPage() {
                       >
                         <span className="flex items-center gap-2">
                           <Info className="h-4 w-4 text-indigo-500" />
-                          Plain English Safety Analysis
+                          See why PRAHARI warned you
                         </span>
                         <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${explainOpen ? "rotate-180" : ""}`} />
                       </button>
@@ -638,10 +775,10 @@ export default function CheckPage() {
                 <div className="space-y-4">
                   <div className="pl-1">
                     <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                      {t("results.evidence")}
+                      Words that raised the warning
                     </h3>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {t("results.evidenceDesc")}
+                      These parts of the conversation matched common scam tactics.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -657,10 +794,10 @@ export default function CheckPage() {
                 <div id="complaint-section" className="space-y-4 pt-4 border-t border-gray-150 dark:border-zinc-900">
                   <div className="pl-1">
                     <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                      {t("results.complaint")}
+                      Ready-to-use complaint
                     </h3>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {t("results.complaintDesc")}
+                      Review this draft before sending it to the authorities.
                     </p>
                   </div>
                   <ComplaintPreview
@@ -695,17 +832,17 @@ export default function CheckPage() {
               exit={{ opacity: 0 }}
               className="max-w-3xl mx-auto"
             >
-              <div className="overflow-hidden rounded-2xl border border-gray-150 bg-white text-left dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white text-left shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 
                 {/* Header title tab bar */}
-                <div className="px-6 py-5 border-b border-gray-150 dark:border-zinc-850 flex items-center justify-between">
-                  <span className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <ClipboardList className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                    {t("check.title")}
-                  </span>
+                <div className="px-5 py-4 border-b border-gray-150 dark:border-zinc-850 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">How would you like to check?</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-zinc-400">Choose one option below.</p>
+                  </div>
 
                   {/* Quick-try buttons for demo evaluations */}
-                  <div className="hidden sm:flex items-center gap-1.5">
+                  <div className="hidden items-center gap-1.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1">
                       Quick Demo:
                     </span>
@@ -734,36 +871,43 @@ export default function CheckPage() {
                   evidenceBytes={evidenceBytes}
                   modelStatus={whisperPrivacy.modelState}
                   audioInMemory={whisperPrivacy.audioStored}
+                  analysisLocation={whisperPrivacy.analysisLocation}
+                  speechMayLeaveDevice={whisperPrivacy.speechMayLeaveDevice}
                 />
 
-                <div className="p-6">
+                <div className="p-4 sm:p-6">
                   <Tabs value={activeTab} onValueChange={(val) => {
+                    if (val !== "live") stopLiveDemo();
                     setActiveTab(val);
                     setSelectedFile(null);
-                  }} className="space-y-6">
-                    <TabsList className="grid grid-cols-3 bg-gray-100 dark:bg-zinc-950 p-1 rounded-xl gap-1">
+                    setLiveResult(null);
+                    }} className="space-y-5">
+                    <TabsList style={{ height: "auto" }} className="grid grid-cols-1 gap-2 bg-transparent p-0 sm:grid-cols-3">
+                      <TabsTrigger
+                        value="live"
+                        style={{ height: "auto" }}
+                        className="min-h-20 rounded-lg border-2 border-gray-200 px-4 py-3 text-left data-[state=active]:border-indigo-600 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-800 dark:border-zinc-700 dark:data-[state=active]:border-indigo-500 dark:data-[state=active]:bg-indigo-950/30 dark:data-[state=active]:text-indigo-200"
+                      >
+                        <span className="flex items-start gap-3"><Mic className="mt-0.5 h-5 w-5 shrink-0" /><span><strong className="block text-sm">Protect me during a call</strong><span className="mt-1 block text-xs font-normal opacity-75">Get warnings while the call continues</span></span></span>
+                      </TabsTrigger>
                       <TabsTrigger
                         value="text"
-                        className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
+                        style={{ height: "auto" }}
+                        className="min-h-20 rounded-lg border-2 border-gray-200 px-4 py-3 text-left data-[state=active]:border-indigo-600 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-800 dark:border-zinc-700 dark:data-[state=active]:border-indigo-500 dark:data-[state=active]:bg-indigo-950/30 dark:data-[state=active]:text-indigo-200"
                       >
-                        {t("check.tabs.text")}
+                        <span className="flex items-start gap-3"><MessageSquareText className="mt-0.5 h-5 w-5 shrink-0" /><span><strong className="block text-sm">Paste a message</strong><span className="mt-1 block text-xs font-normal opacity-75">SMS, WhatsApp, or email</span></span></span>
                       </TabsTrigger>
                       <TabsTrigger
                         value="transcript"
-                        className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
+                        style={{ height: "auto" }}
+                        className="min-h-20 rounded-lg border-2 border-gray-200 px-4 py-3 text-left data-[state=active]:border-indigo-600 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-800 dark:border-zinc-700 dark:data-[state=active]:border-indigo-500 dark:data-[state=active]:bg-indigo-950/30 dark:data-[state=active]:text-indigo-200"
                       >
-                        Text File
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="live"
-                        className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400"
-                      >
-                        Live
+                        <span className="flex items-start gap-3"><FileUp className="mt-0.5 h-5 w-5 shrink-0" /><span><strong className="block text-sm">Upload a text file</strong><span className="mt-1 block text-xs font-normal opacity-75">TXT, MD, or CSV</span></span></span>
                       </TabsTrigger>
                     </TabsList>
 
                     {/* Quick-try buttons for mobile view */}
-                    <div className="flex sm:hidden items-center justify-center gap-1.5 pt-1">
+                    <div className="hidden items-center justify-center gap-1.5 pt-1">
                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1">
                         Demo:
                       </span>
@@ -814,10 +958,67 @@ export default function CheckPage() {
                           onTranscript={setInputText}
                           onPrivacyStatus={setWhisperPrivacy}
                         />
+                        <div className={`rounded-lg border p-4 ${
+                          liveResult?.risk === "suspicious"
+                            ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20"
+                            : "border-indigo-200 bg-indigo-50/60 dark:border-indigo-900 dark:bg-indigo-950/20"
+                        }`} aria-live="polite">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-3">
+                              <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                                whisperPrivacy.captureState === "recording" || liveDemoRunning
+                                  ? "animate-pulse bg-red-500"
+                                  : "bg-emerald-500"
+                              }`} />
+                              <div>
+                                <h3 className="text-sm font-bold text-gray-950 dark:text-white">
+                                  {whisperPrivacy.captureState === "recording" || liveDemoRunning
+                                    ? "Live protection is active"
+                                    : "Live protection is ready"}
+                                </h3>
+                                <p className="mt-1 text-xs leading-relaxed text-gray-600 dark:text-zinc-400">
+                                  {liveChecking
+                                    ? "Checking the latest words on this device..."
+                                    : liveResult?.risk === "suspicious"
+                                      ? "Warning signs found. Do not pay while PRAHARI keeps checking."
+                                      : liveResult
+                                        ? "No strong scam pattern yet. PRAHARI is still listening."
+                                        : "Start listening, or run the live demo below."}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleRunLiveDemo}
+                              disabled={liveDemoRunning || whisperPrivacy.captureState === "recording"}
+                              className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-white px-3 py-2 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:bg-zinc-900 dark:text-indigo-300"
+                            >
+                              <PlayCircle className="h-4 w-4" />
+                              {liveDemoRunning ? "Demo running" : "Run live demo"}
+                            </button>
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                            {LIVE_PHASES.map((phase) => {
+                              const detected = liveResult?.timeline.find((item) => item.phase === phase.key)?.detected;
+                              return (
+                                <div
+                                  key={phase.key}
+                                  className={`flex min-h-11 items-center justify-center rounded-md border px-2 py-2 text-center text-[11px] font-bold ${
+                                    detected
+                                      ? "border-red-300 bg-red-100 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+                                      : "border-gray-200 bg-white text-gray-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
+                                  }`}
+                                >
+                                  {phase.label}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                         <textarea
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
-                          placeholder="The private transcript appears here after you stop capture..."
+                          placeholder="The live transcript appears here as the call continues..."
                           rows={6}
                           className="mt-4 w-full resize-none rounded-xl border border-gray-250 bg-gray-50 p-4 text-sm font-medium leading-relaxed text-gray-800 placeholder-gray-500 focus:border-indigo-500/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-800 dark:bg-zinc-900 dark:text-gray-200 dark:placeholder-zinc-500"
                         />
@@ -826,22 +1027,31 @@ export default function CheckPage() {
                   </Tabs>
 
                   {/* Actions area */}
-                  <div className="mt-6 flex items-center justify-between gap-4">
+                  <details className="mt-5 text-sm text-gray-600 dark:text-zinc-400">
+                    <summary className="cursor-pointer font-semibold">Try an example</summary>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => handleDemoLoad("critical")} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300"><PlayCircle className="h-4 w-4" />Scam example</button>
+                      <button type="button" onClick={() => handleDemoLoad("suspicious")} className="rounded-lg border border-amber-200 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-300">Suspicious example</button>
+                      <button type="button" onClick={() => handleDemoLoad("safe")} className="rounded-lg border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">Safe example</button>
+                    </div>
+                  </details>
+
+                  <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <button
                       onClick={handleReset}
                       className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-850 transition-colors"
                       type="button"
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
-                      Clear Fields
+                      Clear
                     </button>
 
                     <button
                       disabled={(!inputText && !selectedFile)}
                       onClick={handleAnalyze}
-                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+                      className="min-h-12 w-full rounded-lg bg-indigo-600 px-6 py-3 text-base font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
                     >
-                      {t("check.analyze")}
+                      {activeTab === "live" ? "Check full result now" : "Check if this is a scam"}
                     </button>
                   </div>
                 </div>

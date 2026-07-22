@@ -178,10 +178,13 @@ class GraphRepository:
         query = """
         MATCH (r:Report)
         WHERE r.ring_id IS NOT NULL
-        WITH r.ring_id AS ring_id, collect(r) AS reports
+        WITH r.ring_id AS ring_id,
+             collect(r) AS reports,
+             count(DISTINCT r.city) AS city_count
+        WHERE size(reports) > 1
         RETURN ring_id,
                size(reports) AS report_count,
-               size(collect(DISTINCT r.city)) AS city_count,
+               city_count,
                size([x IN reports WHERE x.risk_label = 'CRITICAL']) AS critical_count,
                [x IN reports | x.claimed_agency][0..3] AS agencies
         ORDER BY critical_count DESC, report_count DESC

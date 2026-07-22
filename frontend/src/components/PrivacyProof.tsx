@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Download, HardDrive, Network, Printer, ReceiptText, ShieldCheck } from "lucide-react";
+import { Download, Printer, ReceiptText, ShieldCheck } from "lucide-react";
 
 export interface ConsentReceiptData {
   scanId: string;
@@ -19,37 +19,31 @@ interface PrivacyProofBarProps {
   evidenceBytes: number;
   modelStatus: string;
   audioInMemory: boolean;
+  analysisLocation: "Browser service" | "On device";
+  speechMayLeaveDevice: boolean;
 }
 
-export function PrivacyProofBar({ evidenceBytes, modelStatus, audioInMemory }: PrivacyProofBarProps) {
+export function PrivacyProofBar({
+  evidenceBytes,
+  modelStatus,
+  audioInMemory,
+  analysisLocation,
+  speechMayLeaveDevice,
+}: PrivacyProofBarProps) {
   return (
-    <div className="grid grid-cols-3 border-y border-gray-150 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="flex min-w-0 items-center gap-2 border-r border-gray-150 px-3 py-3 dark:border-zinc-800 sm:px-4">
-        <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
-        <div className="min-w-0">
-          <p className="truncate text-[10px] font-bold uppercase text-gray-400">Analysis</p>
-          <p className="truncate text-xs font-bold text-gray-800 dark:text-zinc-200">On device</p>
-        </div>
+    <div className={`border-y px-4 py-3 ${evidenceBytes === 0 ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/40 dark:bg-emerald-950/15" : "border-indigo-200 bg-indigo-50/70 dark:border-indigo-900/40 dark:bg-indigo-950/15"}`}>
+      <div className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
+        <ShieldCheck className="h-5 w-5 text-emerald-600" />
+        {evidenceBytes === 0 ? "Your evidence has not been shared" : "Shared only after your permission"}
       </div>
-      <div className="flex min-w-0 items-center gap-2 border-r border-gray-150 px-3 py-3 dark:border-zinc-800 sm:px-4">
-        <Network className="h-4 w-4 shrink-0 text-emerald-600" />
-        <div className="min-w-0">
-          <p className="truncate text-[10px] font-bold uppercase text-gray-400">Evidence uploaded</p>
-          <p className="truncate text-xs font-bold text-gray-800 dark:text-zinc-200">{evidenceBytes.toLocaleString()} B</p>
+      <details className="mt-2 pl-7 text-xs text-gray-600 dark:text-zinc-400">
+        <summary className="cursor-pointer font-semibold">Privacy details</summary>
+        <div className="mt-2 space-y-1 leading-relaxed">
+          <p>Speech processing: {analysisLocation}. Evidence shared with PRAHARI: {evidenceBytes.toLocaleString()} bytes.</p>
+          <p>Audio: {speechMayLeaveDevice ? "may be processed by your browser's speech service" : audioInMemory ? "held temporarily in device memory" : "not stored"}.</p>
+          <p>Engine: {modelStatus}.</p>
         </div>
-      </div>
-      <div className="flex min-w-0 items-center gap-2 px-3 py-3 sm:px-4">
-        <HardDrive className="h-4 w-4 shrink-0 text-emerald-600" />
-        <div className="min-w-0">
-          <p className="truncate text-[10px] font-bold uppercase text-gray-400">Audio storage</p>
-          <p className="truncate text-xs font-bold text-gray-800 dark:text-zinc-200">
-            {audioInMemory ? "Memory only" : "None"}
-          </p>
-        </div>
-      </div>
-      <p className="col-span-3 border-t border-gray-100 px-4 py-2 text-[10px] font-medium text-gray-500 dark:border-zinc-850 dark:text-zinc-500">
-        Speech model: {modelStatus}. Model downloads are separate from evidence uploads.
-      </p>
+      </details>
     </div>
   );
 }
@@ -116,4 +110,3 @@ export function ConsentReceipt({ receipt }: { receipt: ConsentReceiptData }) {
     </div>
   );
 }
-

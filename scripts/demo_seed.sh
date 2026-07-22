@@ -131,7 +131,7 @@ print(f'WCC found {len(wcc)} components (size>1)')
 for comp in wcc:
     ring_id = f'RING-{comp[\"componentId\"]}'
     run_write_query(
-        'UNWIND $nodes AS nodeId MATCH (n) WHERE id(n) = nodeId AND n:Report SET n.ring_id = $ring_id',
+        'UNWIND \$nodes AS nodeId MATCH (n) WHERE id(n) = nodeId AND n:Report SET n.ring_id = \$ring_id',
         {'nodes': comp['nodes'], 'ring_id': ring_id}
     )
     print(f'  {ring_id}: {comp[\"memberCount\"]} nodes')

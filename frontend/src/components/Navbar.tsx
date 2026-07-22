@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useTranslation } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { Shield, Sun, Moon, Menu, X, Github } from "lucide-react";
+import { Shield, Sun, Moon, Menu, X } from "lucide-react";
 
 export const Navbar: React.FC = () => {
   const { t } = useTranslation();
@@ -16,9 +16,9 @@ export const Navbar: React.FC = () => {
 
   const links = [
     { name: t("nav.home"), path: "/" },
-    { name: t("nav.check"), path: "/check" },
-    { name: t("nav.about"), path: "/about" },
-    { name: t("nav.dashboard"), path: "/command" },
+    { name: "Check a scam", path: "/check" },
+    { name: "Safety tips", path: "/about" },
+    { name: "For officers", path: "/command" },
   ];
 
   const isActive = (path: string) => {
@@ -59,15 +59,6 @@ export const Navbar: React.FC = () => {
                 {link.name}
               </Link>
             ))}
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors duration-200"
-              aria-label="GitHub repository"
-            >
-              <Github className="h-5 w-5" />
-            </a>
           </nav>
 
           {/* Desktop Actions */}
@@ -123,16 +114,6 @@ export const Navbar: React.FC = () => {
                 {link.name}
               </Link>
             ))}
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-2 px-3 py-2 rounded-md text-base font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900"
-            >
-              <Github className="h-5 w-5" />
-              GitHub
-            </a>
           </div>
           <div className="border-t border-gray-200 dark:border-zinc-800 pt-3 flex items-center justify-between px-3">
             <span className="text-sm text-gray-500 dark:text-gray-400">Language</span>

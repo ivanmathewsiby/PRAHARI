@@ -1,39 +1,25 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "../context/LanguageContext";
 import { ScamPhase } from "../data/mockAnalysis";
-import { ShieldCheck, AlertOctagon, HelpCircle, ChevronDown, Check } from "lucide-react";
+import { AlertOctagon, HelpCircle, ChevronDown, Check } from "lucide-react";
 
 interface TimelineProps {
   timeline: ScamPhase[];
 }
 
 export const Timeline: React.FC<TimelineProps> = ({ timeline }) => {
-  const { language, t } = useTranslation();
+  const { language } = useTranslation();
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-  const [animatedIndex, setAnimatedIndex] = useState<number>(-1);
-
-  // Animate the timeline nodes sequentially on load
-  useEffect(() => {
-    setAnimatedIndex(-1);
-    const intervals = timeline.map((_, i) => {
-      return setTimeout(() => {
-        setAnimatedIndex(i);
-      }, i * 400); // 400ms delay between each phase node
-    });
-
-    return () => {
-      intervals.forEach((id) => clearTimeout(id));
-    };
-  }, [timeline]);
+  const animatedIndex = timeline.length - 1;
 
   const toggleExpand = (index: number) => {
     setExpandedIndex(expandedIndex === index ? null : index);
   };
 
-  const getPhaseIcon = (phase: ScamPhase, index: number, isActive: boolean) => {
+  const getPhaseIcon = (phase: ScamPhase, index: number) => {
     if (index > animatedIndex) {
       return <HelpCircle className="h-4 w-4 text-gray-300 dark:text-zinc-700" />;
     }
@@ -49,10 +35,10 @@ export const Timeline: React.FC<TimelineProps> = ({ timeline }) => {
     <div className="p-6 bg-white dark:bg-zinc-900 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm transition-all duration-200 w-full text-left">
       <div className="mb-4">
         <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-          {t("results.timeline")}
+          How the caller tried to pressure you
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          {t("results.timelineDesc")}
+          Tap a step to see what PRAHARI noticed.
         </p>
       </div>
 
@@ -91,7 +77,7 @@ export const Timeline: React.FC<TimelineProps> = ({ timeline }) => {
                     : "border-green-400 dark:border-green-500/80 bg-green-50 dark:bg-green-950/20 ring-4 ring-green-500/10 shadow-sm"
                 }`}
               >
-                {getPhaseIcon(phase, index, isNodeAnimated)}
+                {getPhaseIcon(phase, index)}
               </span>
 
               {/* Node Contents */}

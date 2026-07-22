@@ -57,6 +57,26 @@ def get_db():
         db.close()
 
 
+def _sync_incident_to_graph(incident: IncidentEvent) -> tuple[bool, Optional[str]]:
+    """Ingest a consented incident and return its existing fraud-ring match."""
+    try:
+        GraphService.ingest_incident(incident)
+        GraphService.link_incident_to_existing_ring(incident.incident_id)
+        ring_rows = run_query(
+            "MATCH (r:Report {report_id: $report_id}) RETURN r.ring_id AS ring_id",
+            {"report_id": incident.incident_id},
+        )
+        ring_id = ring_rows[0].get("ring_id") if ring_rows else None
+        return True, ring_id
+    except Exception as exc:
+        logger.warning(
+            "Incident %s persisted but graph sync failed: %s",
+            incident.incident_id,
+            exc,
+        )
+        return False, None
+
+
 def _evidence_from_matches(matches: dict) -> list[str]:
     evidence = []
     for values in matches.values():
@@ -85,7 +105,15 @@ def analyze_consented_evidence(data: AnalyzeRequest, db: Session = Depends(get_d
         if llm_result is not None
         else _evidence_from_matches(rule_result.get("matches", {}))
     )
-    phases = raw_llm_result.get("phases_detected", []) if llm_result else []
+    phases = (
+        raw_llm_result.get("phases_detected", [])
+        if llm_result
+        else [
+            phase
+            for phase in CANONICAL_PHASES
+            if phase in rule_result.get("rules_fired", [])
+        ]
+    )
     reason = raw_llm_result.get("plain_language_reason", "")
     if llm_result is None:
         reason = (
@@ -161,19 +189,7 @@ def analyze_consented_evidence(data: AnalyzeRequest, db: Session = Depends(get_d
     db.commit()
     db.refresh(incident)
 
-    graph_synced = False
-    ring_id = None
-    try:
-        GraphService.ingest_incident(incident)
-        GraphService.link_incident_to_existing_ring(incident_id)
-        ring_rows = run_query(
-            "MATCH (r:Report {report_id: $report_id}) RETURN r.ring_id AS ring_id",
-            {"report_id": incident_id},
-        )
-        ring_id = ring_rows[0].get("ring_id") if ring_rows else None
-        graph_synced = True
-    except Exception as exc:
-        logger.warning("Incident %s persisted but graph sync failed: %s", incident_id, exc)
+    graph_synced, ring_id = _sync_incident_to_graph(incident)
 
     return AnalyzeResponse(
         incident_id=incident_id,
@@ -290,14 +306,22 @@ def process_analysis_chunk(
     llm_result = None if llm_unavailable else raw_llm_result
     fused = fuse_results(rule_result, llm_result)
 
-    llm_phases = raw_llm_result.get("phases_detected", []) if llm_result else []
+    llm_phases = (
+        raw_llm_result.get("phases_detected", [])
+        if llm_result
+        else phases_from_rules
+    )
     llm_entities = raw_llm_result.get("entities", entities)
     llm_evidence = (
         raw_llm_result.get("evidence_spans", [])
         if llm_result is not None
         else evidence_spans
     )
-    llm_highest = raw_llm_result.get("highest_phase", highest_phase)
+    llm_highest = (
+        raw_llm_result.get("highest_phase", highest_phase)
+        if llm_result
+        else highest_phase
+    )
 
     reason = raw_llm_result.get("plain_language_reason", "")
     if llm_result is None:
@@ -325,8 +349,8 @@ def process_analysis_chunk(
         consent_scope=session["start_request"].consent_scope,
         retention_days=session["start_request"].retention_days,
         risk_level=fused["db_risk_level"],
-        graph_synced=False,  # reserved for future graph integration
-        ring_id=None,        # reserved for future graph integration
+        graph_synced=False,
+        ring_id=None,
     )
 
     if fused["risk_label"] == "SAFE":
@@ -340,9 +364,13 @@ def process_analysis_chunk(
     incident = IncidentEvent(
         incident_id=incident_id,
         citizen_name=start.citizen_name or "Anonymous Citizen",
-        phone_number=start.phone_number or (extracted_phones[0] if extracted_phones else ""),
+        phone_number=start.caller_phone_number or (extracted_phones[0] if extracted_phones else ""),
         transcript=full_text,
-        location=start.caller_phone_number or "",
+        location=(
+            "Live telephony report"
+            if start.source_channel in {"telephony_sip", "telephony_pstn"}
+            else "Consent-based citizen report"
+        ),
         fraud_type="Digital Arrest Scam" if fused["risk_label"] == "CRITICAL" else "Suspicious Communication",
         risk_level=fused["risk_label"],
         status="OPEN",
@@ -383,9 +411,13 @@ def process_analysis_chunk(
     db.commit()
     db.refresh(incident)
 
+    graph_synced, ring_id = _sync_incident_to_graph(incident)
+
     resp.incident_id = incident_id
     resp.persisted = True
     resp.expires_at = incident.expires_at.isoformat() + "Z"
+    resp.graph_synced = graph_synced
+    resp.ring_id = ring_id
 
     del _session_store[session_id]
     return resp

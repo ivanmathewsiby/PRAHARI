@@ -47,7 +47,7 @@ const NODE_ICONS: Record<string, string> = {
 };
 
 const layoutConfig = {
-  name: "cose-bilkent",
+  name: "cose",
   animate: true,
   animationDuration: 800,
   nodeRepulsion: 8000,
